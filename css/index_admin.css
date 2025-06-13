@@ -1,0 +1,300 @@
+/* ==========================================================================
+   SkinGlow Admin Styles - FULL PINK DOMINATION
+   ========================================================================== */
+
+/* Define SkinGlow Color Palette */
+:root {
+    /* Primary SkinGlow Pinks (Adjust these hex codes if you have specific pinks in mind) */
+    --skinglow-primary: #D68DAA;        /* Main Pink - Medium, prominent */
+    --skinglow-dark-pink: #A06782;      /* Darker Pink - For hover, active states, strong text */
+    --skinglow-light-pink: #FCE4EC;     /* Very Light Pink - For light backgrounds, borders */
+    --skinglow-lighter-pink: #FAE6ED;   /* Even Lighter Pink - For very subtle backgrounds */
+    --skinglow-bright-pink: #FF6B81;    /* A brighter pink if needed for accents */
+
+    /* Supporting colors (these will mostly be overridden to pink or used sparingly) */
+    --skinglow-white: #FFFFFF;
+    --skinglow-black: #212529; /* Near black for ultimate contrast on pink */
+    --skinglow-gray: #757575; /* Slightly darker gray for text contrast */
+    --skinglow-gray-dark: #424242; /* Even darker gray for strong text */
+
+    /* Re-map ALL relevant SB Admin 2 variables to SkinGlow pinks */
+    --blue: var(--skinglow-primary);
+    --indigo: var(--skinglow-primary);
+    --purple: var(--skinglow-primary);
+    --pink: var(--skinglow-primary); /* Original SB Admin 2 pink now maps to our primary */
+    --red: var(--skinglow-primary); /* Danger/Red now uses primary pink, or use specific pink for danger if needed */
+    --orange: var(--skinglow-primary); /* Orange now uses primary pink */
+    --yellow: var(--skinglow-primary); /* Yellow now uses primary pink */
+    --green: var(--skinglow-primary); /* Success/Green now uses primary pink */
+    --teal: var(--skinglow-primary); /* Teal now uses primary pink */
+    --cyan: var(--skinglow-primary); /* Cyan now uses primary pink */
+
+    --white: var(--skinglow-white);
+    --gray: var(--skinglow-gray);
+    --gray-dark: var(--skinglow-gray-dark);
+
+    --primary: var(--skinglow-primary);
+    --secondary: var(--skinglow-dark-pink); /* Secondary elements get a darker pink */
+    --success: var(--skinglow-primary); /* Make success also primary pink */
+    --info: var(--skinglow-primary);    /* Make info also primary pink */
+    --warning: var(--skinglow-primary); /* Make warning also primary pink */
+    --danger: var(--skinglow-primary);  /* Make danger also primary pink */
+    --light: var(--skinglow-light-pink); /* Light elements get light pink */
+    --dark: var(--skinglow-dark-pink);   /* Dark elements get dark pink */
+}
+
+/* General Body and Text Colors */
+body {
+    background-color: var(--skinglow-lighter-pink); /* Overall light pink background */
+    color: var(--skinglow-gray-dark); /* Dark gray for main text for readability on pink */
+}
+
+/* Sidebar Styling - Dominant Pink */
+.sidebar {
+    background-color: var(--skinglow-primary) !important;
+    background-image: linear-gradient(180deg, var(--skinglow-primary) 10%, var(--skinglow-dark-pink) 100%) !important;
+    color: var(--skinglow-white) !important; /* Ensure all sidebar text is white */
+}
+.sidebar .nav-item .nav-link {
+    color: var(--skinglow-white) !important;
+}
+.sidebar .nav-item .nav-link i {
+    color: var(--skinglow-white) !important;
+}
+.sidebar .nav-item .nav-link:hover {
+    color: var(--skinglow-white) !important;
+    background-color: rgba(255, 255, 255, 0.25) !important; /* Stronger white overlay on hover */
+}
+.sidebar .nav-item.active .nav-link {
+    color: var(--skinglow-white) !important;
+    background-color: rgba(255, 255, 255, 0.35) !important; /* Even stronger white overlay for active */
+}
+.sidebar .nav-item .nav-link[data-toggle="collapse"]::after {
+    color: var(--skinglow-white) !important;
+}
+.sidebar-divider {
+    border-top: 1px solid rgba(255, 255, 255, 0.3) !important; /* More visible white divider */
+}
+.sidebar-brand-icon,
+.sidebar-brand-text {
+    color: var(--skinglow-white) !important;
+}
+.sidebar-light .sidebar-heading {
+    color: var(--skinglow-dark-pink); /* Heading in light sidebar */
+}
+.sidebar-dark .sidebar-heading {
+    color: rgba(255, 255, 255, 0.8); /* Heading in dark sidebar */
+}
+
+
+/* Topbar Styling - Pink Dominance */
+.topbar {
+    background-color: var(--skinglow-light-pink) !important; /* Light pink background for topbar */
+    border-bottom: 1px solid var(--skinglow-primary) !important; /* Primary pink border below topbar */
+}
+.navbar-light .navbar-nav .nav-link {
+    color: var(--skinglow-dark-pink) !important; /* Dark pink for topbar links */
+}
+.navbar-light .navbar-nav .nav-link:hover {
+    color: var(--skinglow-primary) !important; /* Main pink on hover */
+}
+.topbar .dropdown-menu {
+    border-color: var(--skinglow-primary) !important;
+}
+.topbar .dropdown-list .dropdown-header {
+    background-color: var(--skinglow-primary) !important;
+    border-color: var(--skinglow-primary) !important;
+    color: var(--skinglow-white) !important;
+}
+.topbar .nav-item.dropdown .dropdown-toggle::after {
+    color: var(--skinglow-dark-pink) !important;
+}
+
+
+/* Buttons - All Pink */
+.btn-primary, .btn-success, .btn-info, .btn-warning, .btn-danger {
+    background-color: var(--skinglow-primary) !important;
+    border-color: var(--skinglow-primary) !important;
+    color: var(--skinglow-white) !important;
+}
+.btn-primary:hover, .btn-success:hover, .btn-info:hover, .btn-warning:hover, .btn-danger:hover,
+.btn-primary:focus, .btn-success:focus, .btn-info:focus, .btn-warning:focus, .btn-danger:focus,
+.btn-primary:active, .btn-success:active, .btn-info:active, .btn-warning:active, .btn-danger:active {
+    background-color: var(--skinglow-dark-pink) !important;
+    border-color: var(--skinglow-dark-pink) !important;
+}
+.btn-secondary { /* Give secondary buttons a pinkish hue too */
+    background-color: var(--skinglow-light-pink) !important;
+    border-color: var(--skinglow-light-pink) !important;
+    color: var(--skinglow-dark-pink) !important;
+}
+.btn-secondary:hover {
+    background-color: var(--skinglow-primary) !important;
+    border-color: var(--skinglow-primary) !important;
+    color: var(--skinglow-white) !important;
+}
+
+
+/* Text Colors - Predominantly Pink */
+a.text-primary,
+.text-primary,
+a.text-success, /* Also make success text pink */
+.text-success,
+a.text-info,    /* Also make info text pink */
+.text-info,
+a.text-warning, /* Also make warning text pink */
+.text-warning,
+a.text-danger,  /* Also make danger text pink */
+.text-danger {
+    color: var(--skinglow-primary) !important;
+}
+a.text-primary:hover,
+a.text-success:hover,
+a.text-info:hover,
+a.text-warning:hover,
+a.text-danger:hover {
+    color: var(--skinglow-dark-pink) !important;
+}
+
+.text-gray-300 { /* For icons in cards */
+    color: var(--skinglow-dark-pink) !important; /* Make card icons darker pink */
+    opacity: 0.8; /* Slightly transparent */
+}
+.text-gray-800, .text-gray-900 { /* For strong text like card values and headings */
+    color: var(--skinglow-gray-dark) !important;
+}
+.text-xs.font-weight-bold { /* For all small bold labels (e.g., card titles) */
+    color: var(--skinglow-dark-pink) !important;
+}
+
+/* Backgrounds - Extensive Pink Usage */
+.bg-gradient-primary {
+    background-color: var(--skinglow-primary) !important;
+    background-image: linear-gradient(180deg, var(--skinglow-primary) 10%, var(--skinglow-dark-pink) 100%) !important;
+    background-size: cover;
+}
+.bg-light {
+    background-color: var(--skinglow-light-pink) !important;
+}
+.bg-dark {
+    background-color: var(--skinglow-dark-pink) !important;
+}
+.bg-primary, .bg-success, .bg-info, .bg-warning, .bg-danger {
+    background-color: var(--skinglow-primary) !important; /* All these classes get primary pink */
+}
+
+/* Cards - Pink Borders and Headers */
+.card {
+    border-color: var(--skinglow-light-pink) !important;
+}
+.card-header {
+    background-color: var(--skinglow-lighter-pink) !important;
+    border-bottom: 1px solid var(--skinglow-light-pink) !important;
+    color: var(--skinglow-gray-dark) !important;
+}
+.card-header.bg-primary, .card-header.bg-success, .card-header.bg-info, .card-header.bg-warning, .card-header.bg-danger {
+    background-color: var(--skinglow-primary) !important;
+    color: var(--skinglow-white) !important;
+}
+
+/* Card Left Borders - All Pink */
+.card-border-left-primary,
+.card-border-left-success,
+.card-border-left-info,
+.card-border-left-warning,
+.card-border-left-danger {
+    border-left: .25rem solid var(--skinglow-primary) !important; /* All left borders are primary pink */
+}
+
+/* Progress Bar - Pink */
+.progress-bar {
+    background-color: var(--skinglow-primary) !important;
+}
+
+
+/* Forms */
+.form-control:focus {
+    border-color: var(--skinglow-primary) !important;
+    box-shadow: 0 0 0 .2rem rgba(214, 141, 170, 0.25) !important; /* Pink shadow on focus */
+}
+
+
+/* Modals */
+.modal-header {
+    border-bottom: 1px solid var(--skinglow-light-pink) !important;
+    background-color: var(--skinglow-lighter-pink) !important; /* Light pink header for modals */
+    color: var(--skinglow-gray-dark) !important;
+}
+.modal-header .close {
+    color: var(--skinglow-dark-pink) !important; /* Dark pink close button */
+}
+.modal-header.bg-primary {
+    background-color: var(--skinglow-primary) !important;
+    color: white !important;
+}
+.modal-footer {
+    border-top: 1px solid var(--skinglow-light-pink) !important;
+    background-color: var(--skinglow-lighter-pink) !important; /* Light pink footer for modals */
+}
+
+/* Alerts - Pink tones */
+.alert-primary, .alert-success, .alert-info, .alert-warning, .alert-danger {
+    color: var(--skinglow-dark-pink) !important; /* Dark pink text for alerts */
+    background-color: var(--skinglow-lighter-pink) !important; /* Very light pink background */
+    border-color: var(--skinglow-light-pink) !important; /* Light pink border */
+}
+
+
+/* Other elements */
+.badge-primary, .badge-success, .badge-info, .badge-warning, .badge-danger {
+    background-color: var(--skinglow-primary) !important; /* All badges get primary pink */
+    color: var(--skinglow-white) !important;
+}
+.badge-primary[href]:hover, .badge-success[href]:hover, .badge-info[href]:hover, .badge-warning[href]:hover, .badge-danger[href]:hover {
+    background-color: var(--skinglow-dark-pink) !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--skinglow-lighter-pink) !important; /* Light pink hover for tables */
+}
+.table thead th { /* Table headers get pink background */
+    background-color: var(--skinglow-light-pink) !important;
+    color: var(--skinglow-dark-pink) !important;
+    border-bottom-color: var(--skinglow-primary) !important;
+}
+
+.dropdown-item:active {
+    background-color: var(--skinglow-primary) !important;
+    color: white !important;
+}
+.dropdown-menu {
+    border-color: var(--skinglow-light-pink) !important;
+}
+.dropdown-item:hover {
+    background-color: var(--skinglow-lighter-pink) !important;
+    color: var(--skinglow-dark-pink) !important;
+}
+
+/* Scroll to Top Button - Pink */
+.scroll-to-top {
+    background-color: var(--skinglow-primary) !important;
+}
+.scroll-to-top:hover {
+    background-color: var(--skinglow-dark-pink) !important;
+}
+
+/* Auth Pages (Login/Register) - Specific Overrides */
+/* Assuming login/register pages use similar SB Admin 2 classes */
+.bg-gradient-primary.auth-page { /* If your auth pages have a specific class */
+    background-image: linear-gradient(180deg, var(--skinglow-primary) 10%, var(--skinglow-dark-pink) 100%) !important;
+}
+.small { /* For text like "Forgot Password?" or "Create an Account!" */
+    color: var(--skinglow-dark-pink) !important;
+}
+.form-control-user { /* For form fields in auth pages */
+    border-color: var(--skinglow-light-pink) !important;
+}
+.form-control-user::placeholder {
+    color: var(--skinglow-dark-pink) !important;
+    opacity: 0.7;
+}

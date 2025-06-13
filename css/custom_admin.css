@@ -1,0 +1,99 @@
+/* admin/css/custom_admin.css */
+
+/* Pastikan HTML dan BODY memiliki tinggi penuh dan tidak ada overflow yang tidak diinginkan */
+html, body {
+    height: 100%;
+    /* overflow-x: hidden; */ /* Hindari scroll horizontal jika tidak diperlukan */
+}
+
+#wrapper {
+    display: flex; /* Memastikan layout flexbox untuk sidebar dan content */
+    min-height: 100vh; /* Pastikan wrapper mengambil tinggi viewport penuh */
+}
+
+.sidebar {
+    position: sticky; /* Menjadikan sidebar lengket saat digulir */
+    top: 0; /* Menempel di bagian atas viewport */
+    height: 100vh; /* Memastikan sidebar mengambil tinggi viewport penuh */
+    overflow-y: auto; /* Mengaktifkan scroll pada sidebar jika kontennya panjang */
+    z-index: 1000; /* Pastikan sidebar di atas konten lain */
+    /* Tambahan untuk kompatibilitas browser */
+    -webkit-position: sticky; 
+}
+
+/* Jika Anda memiliki topbar, pastikan tidak mengganggu sticky sidebar */
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 999; /* Sedikit di bawah sidebar agar sidebar tetap di atas */
+}
+
+/* Aturan untuk area konten utama agar bisa digulir */
+#content-wrapper {
+    flex-grow: 1; /* Memungkinkan content-wrapper mengambil sisa ruang */
+    overflow-y: auto; /* Memungkinkan area konten utama untuk digulir */
+}
+
+
+/* manage_product */
+.product-thumbnail-in-name {
+            width: 40px; 
+            height: 40px;
+            object-fit: cover;
+            border-radius: 3px;
+            margin-right: 8px; 
+            vertical-align: middle; 
+        }
+        .product-name-cell {
+            display: flex; 
+            align-items: center; 
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 250px; 
+        }
+        
+        .description-cell {
+            max-width: 400px; 
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+      
+        #dataTable th:nth-child(4), 
+        #dataTable td:nth-child(4) {
+            min-width: 120px; 
+        }
+      
+        #dataTable th:last-child, 
+        #dataTable td:last-child {
+            width: 120px; 
+            text-align: center;
+        }
+    
+        .action-buttons .btn {
+            padding: .25rem .5rem; 
+        }
+
+
+        .product-detail-img {
+    width: 600px; /* Sesuaikan ukuran lebar yang Anda inginkan */
+    height: auto; /* Penting untuk menjaga rasio aspek gambar */
+    display: block; /* Membantu menghilangkan spasi ekstra di bawah gambar jika ada */
+    margin: 0 auto; /* Opsional: Untuk menengahkan gambar jika lebarnya lebih kecil dari kontainer */
+}
+
+/* Opsional: Media Queries untuk responsivitas yang lebih baik di layar kecil */
+@media (max-width: 768px) {
+    .product-detail-img {
+        width: 100%; /* Pastikan gambar mengisi lebar penuh di layar kecil */
+        max-width: 400px; /* Batasi lebar maksimum di layar kecil agar tidak terlalu besar */
+    }
+}
+
+/* Jika Anda ingin sedikit lebih besar di layar desktop yang sangat lebar */
+@media (min-width: 1200px) {
+    .product-detail-img {
+        width: 750px; /* Ukuran yang lebih besar untuk layar desktop */
+    }
+}

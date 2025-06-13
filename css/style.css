@@ -1,0 +1,121 @@
+/* CSS yang disalin persis dari <style> di index.html Anda */
+body.bg-gradient-primary {
+    /* Warna bisa disesuaikan agar lebih 'skincare-ish', misal gradasi pink/peach/biru muda */
+    background-color: #f7e6e6; /* Warna dasar lembut */
+    background-image: linear-gradient(180deg, #f7e6e6 10%, #e0c8d8 100%); /* Gradasi ke ungu/pink lembut */
+    background-size: cover;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #5a5c69; /* Warna teks lebih gelap agar kontras dengan background terang */
+    overflow-x: hidden;
+}
+
+.card {
+    background-color: rgba(255, 255, 255, 0.95); /* Sedikit transparan untuk efek */
+    border-radius: 15px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+
+.hero-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100%;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+}
+
+.hero-content {
+    max-width: 900px;
+    padding: 20px;
+    /* text-shadow bisa dihapus atau diubah jika background lebih terang */
+    text-shadow: none;
+}
+
+.hero-content h1 {
+    font-size: 3.5rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    line-height: 1.2;
+    color: #343a40; /* Warna judul yang lebih gelap */
+}
+
+.hero-content h2 {
+    font-size: 1.5rem;
+    font-weight: 400;
+    margin-bottom: 40px;
+    opacity: 0.85; /* Sedikit lebih opaque */
+    color: #6c757d; /* Warna deskripsi */
+}
+
+.hero-buttons .btn {
+    padding: 15px 35px;
+    font-size: 1.1rem;
+    border-radius: 50px;
+    margin: 0 15px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.hero-buttons .btn-primary {
+    background-color: #D68DAA !important; /* Warna tombol utama: Dusty Pink */
+    border-color: #D68DAA !important;
+}
+
+.hero-buttons .btn-primary:hover {
+    background-color: #C57D99 !important; /* Warna hover tombol utama: Dusty Pink yang lebih gelap */
+    border-color: #C57D99 !important;
+}
+
+.hero-buttons .btn-outline-light {
+    color: #C57D99; /* Warna teks tombol outline, disamakan dengan hover primary */
+    border-color: #C57D99; /* Warna border tombol outline */
+}
+
+.hero-buttons .btn-outline-light:hover {
+    background-color: #D68DAA; /* Warna hover tombol outline, bisa disamakan dengan primary normal */
+    color: #fff; /* Warna teks hover tombol outline */
+}
+
+.hero-image-illustration {
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 100px; /* Ini sesuai dengan margin-bottom di kode asli Anda */
+    opacity: 0.95; /* Lebih opaque */
+    filter: drop-shadow(0 5px 15px rgba(0,0,0,0.2));
+}
+
+/* Responsive adjustments (tetap sama) */
+@media (max-width: 992px) {
+    .hero-content h1 {
+        font-size: 2.5rem;
+    }
+    .hero-content h2 {
+        font-size: 1.2rem;
+    }
+    .hero-image-illustration {
+        width: 100%;
+        margin-top: 30px;
+    }
+}
+
+@media (max-width: 768px) {
+    .hero-content h1 {
+        font-size: 2rem;
+    }
+    .hero-content h2 {
+        font-size: 1rem;
+    }
+    .hero-buttons .btn {
+        display: block;
+        width: 100%;
+        margin: 10px 0;
+    }
+    .hero-image-illustration {
+        width: 80%;
+    }
+}
