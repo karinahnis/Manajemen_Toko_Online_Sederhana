@@ -50,7 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $order_id = $conn->insert_id;
 
             $stmt_order_item = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price_at_order) VALUES (?, ?, ?, ?)");
-            $stmt_update_stock = $conn->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+            // Baris ini dihapus karena trigger database yang akan menangani pengurangan stok:
+            // $stmt_update_stock = $conn->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
 
             foreach ($cart_items as $item) {
                 $product_id = (int)$item['id'];
@@ -60,10 +61,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 if (!$stmt_order_item->bind_param("iiid", $order_id, $product_id, $quantity, $price_at_order)) {
                     throw new Exception("Gagal bind parameter item pesanan: " . $stmt_order_item->error);
                 }
+                
+                // Eksekusi INSERT ke order_items. Trigger akan berjalan di sini.
                 if (!$stmt_order_item->execute()) {
-                    throw new Exception("Gagal menyimpan item pesanan: " . $stmt_order_item->error);
+                    // Jika trigger BEFORE INSERT membatalkan operasi (misal karena stok habis),
+                    // error akan muncul dari sini.
+                    throw new Exception("Gagal menyimpan item pesanan (kemungkinan stok tidak cukup): " . $stmt_order_item->error);
                 }
 
+                // Bagian ini dihapus karena trigger database yang akan menangani pengurangan stok:
+                /*
                 if (!$stmt_update_stock->bind_param("iii", $quantity, $product_id, $quantity)) {
                     throw new Exception("Gagal bind parameter update stok: " . $stmt_update_stock->error);
                 }
@@ -71,8 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     throw new Exception("Gagal memperbarui stok produk: " . $stmt_update_stock->error);
                 }
                 if ($stmt_update_stock->affected_rows === 0) {
-                     throw new Exception("Stok tidak cukup untuk produk: " . htmlspecialchars($item['name']) . " atau produk tidak ditemukan.");
+                    throw new Exception("Stok tidak cukup untuk produk: " . htmlspecialchars($item['name']) . " atau produk tidak ditemukan.");
                 }
+                */
             }
 
             $conn->commit();
@@ -92,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } finally {
             if (isset($stmt_order)) $stmt_order->close();
             if (isset($stmt_order_item)) $stmt_order_item->close();
-            if (isset($stmt_update_stock)) $stmt_update_stock->close();
+            // $stmt_update_stock tidak lagi diperlukan
         }
     }
 }
@@ -456,7 +464,7 @@ $conn->close();
                             name: product.name,
                             price: parseFloat(product.price),
                             quantity: 1,
-                            stock: product.stock
+                            stock: product.stock // Penting: simpan stok asli produk
                         });
                     } else {
                         alert('Stok produk "' + product.name + '" sudah habis.');
@@ -574,7 +582,7 @@ $conn->close();
             $(document).on('change', '.item-qty', function() {
                 const productId = $(this).data('id');
                 let newQty = parseInt($(this).val());
-                const productStock = parseInt($(this).attr('max'));
+                const productStock = parseInt($(this).attr('max')); // Menggunakan atribut max yang diset dari stok produk
 
                 if (isNaN(newQty) || newQty < 1) {
                     newQty = 1;
