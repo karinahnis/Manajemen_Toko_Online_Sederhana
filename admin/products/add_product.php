@@ -1,12 +1,6 @@
 <?php
 session_start();
 
-// Cek apakah user sudah login DAN role-nya adalah 'admin'
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header("Location: ../login.html?error=Akses tidak diizinkan untuk role ini.");
-    exit();
-}
-
 require_once '../../config/database.php'; // Pastikan path ini benar
 
 $conn = get_db_connection();
@@ -160,13 +154,6 @@ $conn->close();
                 <a class="nav-link" href="../orders/manage_orders.php">
                     <i class="fas fa-fw fa-shopping-cart"></i>
                     <span>Pesanan</span>
-                </a>
-            </li>
-
-            <li class="nav-item">
-                <a class="nav-link" href="../users/manage_users.php">
-                    <i class="fas fa-fw fa-users"></i>
-                    <span>Pelanggan</span>
                 </a>
             </li>
             

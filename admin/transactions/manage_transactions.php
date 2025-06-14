@@ -1,71 +1,101 @@
 <?php
-session_start();
 
-// Cek apakah user sudah login DAN role-nya adalah 'admin'
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header("Location: ../login.html?error=Akses tidak diizinkan untuk role ini.");
-    exit();
-}
-
-require_once '../../config/database.php'; // Pastikan path ini benar
+require_once '../../config/database.php'; // Pastikan path ini benar (dari admin/transactions/ ke root/config)
 
 $conn = get_db_connection();
 
 $message = '';
 $error = '';
 
-// Ambil pesan dari URL jika ada (setelah redirect dari operasi lain)
-if (isset($_GET['message'])) {
-    $message = htmlspecialchars($_GET['message']);
-}
-if (isset($_GET['error'])) {
-    $error = htmlspecialchars($_GET['error']);
+// --- Ambil daftar kategori untuk dropdown ---
+$categories = [];
+$categories_query = "SELECT id, name FROM categories ORDER BY name ASC";
+$categories_result = $conn->query($categories_query);
+if ($categories_result) {
+    while ($row = $categories_result->fetch_assoc()) {
+        $categories[] = $row;
+    }
+} else {
+    error_log("Failed to load categories: " . $conn->error); // Log error
 }
 
-// --- Logika untuk Update Status Transaksi (Opsional, jika admin bisa mengubah status) ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
-    $transaction_id = (int)$_POST['transaction_id'];
-    $new_status = trim($_POST['new_status']);
+// Logika POST untuk memproses checkout
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'process_checkout') {
+    $total_bill = (float)$_POST['total_bill'];
+    $customer_payment_amount = (float)$_POST['customer_payment_amount'];
+    $payment_method = $_POST['payment_method'] ?? 'Cash'; // Ambil metode pembayaran dari form
+    $cart_items_json = $_POST['cart_items'];
+    $cart_items = json_decode($cart_items_json, true);
 
-    // Validasi status yang diizinkan (sesuai ENUM di tabel)
-    $allowed_statuses = ['pending', 'processed', 'completed', 'cancelled', 'refunded'];
-    if (!in_array($new_status, $allowed_statuses)) {
-        $error = "Status tidak valid.";
+    if (empty($cart_items)) {
+        $error = "Keranjang belanja kosong. Harap tambahkan produk.";
+    } elseif ($customer_payment_amount < $total_bill) {
+        $error = "Jumlah uang dari pelanggan kurang dari total tagihan.";
     } else {
-        $stmt_update = $conn->prepare("UPDATE orders SET status = ? WHERE id = ?");
-        if ($stmt_update) {
-            $stmt_update->bind_param("si", $new_status, $transaction_id);
-            if ($stmt_update->execute()) {
-                $message = "Status transaksi #" . $transaction_id . " berhasil diperbarui menjadi '" . htmlspecialchars($new_status) . "'.";
-            } else {
-                $error = "Gagal memperbarui status transaksi: " . $stmt_update->error;
+        $conn->begin_transaction();
+        try {
+            $user_id_for_order = null; 
+            
+            // Query INSERT sudah benar tanpa customer_name_manual
+            $stmt_order = $conn->prepare("INSERT INTO orders (user_id, order_date, total_amount, status, payment_method) VALUES (?, NOW(), ?, ?, ?)");
+            $status_completed = 'completed'; 
+            // bind_param juga sudah benar (idss)
+            if (!$stmt_order->bind_param("idss", $user_id_for_order, $total_bill, $status_completed, $payment_method)) {
+                 throw new Exception("Gagal bind parameter pesanan: " . $stmt_order->error);
             }
-            $stmt_update->close();
-        } else {
-            $error = "Gagal menyiapkan statement update: " . $conn->error;
+
+            if (!$stmt_order->execute()) {
+                throw new Exception("Gagal menyimpan pesanan: " . $stmt_order->error);
+            }
+            $order_id = $conn->insert_id;
+
+            $stmt_order_item = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price_at_order) VALUES (?, ?, ?, ?)");
+            $stmt_update_stock = $conn->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+
+            foreach ($cart_items as $item) {
+                $product_id = (int)$item['id'];
+                $quantity = (int)$item['quantity'];
+                $price_at_order = (float)$item['price'];
+
+                if (!$stmt_order_item->bind_param("iiid", $order_id, $product_id, $quantity, $price_at_order)) {
+                    throw new Exception("Gagal bind parameter item pesanan: " . $stmt_order_item->error);
+                }
+                if (!$stmt_order_item->execute()) {
+                    throw new Exception("Gagal menyimpan item pesanan: " . $stmt_order_item->error);
+                }
+
+                if (!$stmt_update_stock->bind_param("iii", $quantity, $product_id, $quantity)) {
+                    throw new Exception("Gagal bind parameter update stok: " . $stmt_update_stock->error);
+                }
+                if (!$stmt_update_stock->execute()) {
+                    throw new Exception("Gagal memperbarui stok produk: " . $stmt_update_stock->error);
+                }
+                if ($stmt_update_stock->affected_rows === 0) {
+                     throw new Exception("Stok tidak cukup untuk produk: " . htmlspecialchars($item['name']) . " atau produk tidak ditemukan.");
+                }
+            }
+
+            $conn->commit();
+            $change_amount = $customer_payment_amount - $total_bill; 
+            $message = "Transaksi berhasil diproses! Kembalian: Rp " . number_format($change_amount, 0, ',', '.');
+            
+            // --- Perubahan di sini: Redirect ke manage_orders.php ---
+            header("Location: ../orders/manage_orders.php?message=" . urlencode($message) . "&status=success");
+            exit();
+
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Gagal memproses transaksi: " . $e->getMessage();
+            // --- Perubahan di sini: Redirect ke manage_orders.php dengan pesan error ---
+            header("Location: ../orders/manage_orders.php?error=" . urlencode($error) . "&status=error");
+            exit();
+        } finally {
+            if (isset($stmt_order)) $stmt_order->close();
+            if (isset($stmt_order_item)) $stmt_order_item->close();
+            if (isset($stmt_update_stock)) $stmt_update_stock->close();
         }
     }
 }
-
-
-// --- Ambil semua data transaksi dari tabel 'orders' ---
-// Kita akan melakukan JOIN dengan tabel 'users' untuk mendapatkan nama user
-$transactions_query = "
-    SELECT 
-        o.id, 
-        o.user_id, 
-        u.name AS user_name, 
-        o.order_date,  
-        o.status,
-        o.total_amount
-    FROM 
-        orders AS o
-    JOIN 
-        users AS u ON o.user_id = u.id
-    ORDER BY 
-        o.order_date DESC
-";
-$transactions_result = $conn->query($transactions_query);
 
 $conn->close();
 ?>
@@ -76,31 +106,59 @@ $conn->close();
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description" content="Manajemen Transaksi SkinGlow!">
+    <meta name="description" content="Proses Transaksi/Checkout SkinGlow!">
     <meta name="author" content="Tim SkinGlow">
-    <title>SkinGlow! - Manajemen Transaksi</title>
+    <title>SkinGlow! - Proses Checkout</title>
 
     <link href="../../vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
     <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
-
     <link href="../../css/sb-admin-2.min.css" rel="stylesheet">
     <link href="../../css/index_admin.css" rel="stylesheet">
-    <link href="../../vendor/datatables/dataTables.bootstrap4.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../../css/custom_admin.css">
 
     <style>
-        /* Gaya untuk status */
-        .badge-status-pending { background-color: #ffc107; color: #343a40; } /* Yellow */
-        .badge-status-processed { background-color: #17a2b8; color: #fff; } /* Info Blue */
-        .badge-status-completed { background-color: #28a745; color: #fff; } /* Green */
-        .badge-status-cancelled { background-color: #dc3545; color: #fff; } /* Red */
-        .badge-status-refunded { background-color: #6c757d; color: #fff; } /* Gray */
+        .product-item {
+            cursor: pointer;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            background-color: #fff;
+            transition: background-color 0.2s;
+        }
+        .product-item:hover {
+            background-color: #f8f9fc;
+        }
+        .product-item.selected {
+            background-color: #e0f2f7; /* Light blue */
+            border-color: #007bff;
+        }
+        .product-item.out-of-stock {
+            background-color: #fdd; /* Light red */
+            color: #666;
+            cursor: not-allowed;
+        }
+        .product-item.out-of-stock .add-to-cart-btn {
+            background-color: #ccc;
+            border-color: #ccc;
+            cursor: not-allowed;
+        }
+        #cartTable tbody tr td {
+            vertical-align: middle;
+        }
+        #cartTable tbody tr td input[type="number"] {
+            width: 70px;
+            text-align: center;
+        }
+        .form-control-static {
+            font-weight: bold;
+        }
     </style>
 </head>
 <body id="page-top">
     <div id="wrapper">
         <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
-            <a class="sidebar-brand d-flex align-items-center justify-content-center" href="index.php">
+            <a class="sidebar-brand d-flex align-items-center justify-content-center" href="../index.php">
                 <div class="sidebar-brand-icon rotate-n-15">
                     <i class="fas fa-cubes"></i>
                 </div>
@@ -108,7 +166,7 @@ $conn->close();
             </a>
             <hr class="sidebar-divider my-0">
             <li class="nav-item">
-                <a class="nav-link" href="index.php">
+                <a class="nav-link" href="../index.php">
                     <i class="fas fa-fw fa-tachometer-alt"></i>
                     <span>Dashboard</span>
                 </a>
@@ -127,23 +185,17 @@ $conn->close();
                     <span>Kategori Produk</span>
                 </a>
             </li>
-            <li class="nav-item">
+             <li class="nav-item">
                 <a class="nav-link" href="../orders/manage_orders.php">
                     <i class="fas fa-fw fa-shopping-cart"></i>
-                    <span>Pelanggan</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="../users/manage_users.php">
-                    <i class="fas fa-fw fa-users"></i>
-                    <span>User</span>
+                    <span>Pesanan</span>
                 </a>
             </li>
             <hr class="sidebar-divider">
             <div class="sidebar-heading">Manajemen Keuangan</div>
             <li class="nav-item active">
-                <a class="nav-link" href="../transactions/manage_transactions.php">
-                    <i class="fas fa-fw fa-money-bill-alt"></i>
+                <a class="nav-link" href="manage_transactions.php">
+                    <i class="fas fa-fw fa-cash-register"></i>
                     <span>Transaksi</span>
                 </a>
             </li>
@@ -184,89 +236,111 @@ $conn->close();
                     </ul>
                 </nav>
                 <div class="container-fluid">
-                    <h1 class="h3 mb-4 text-gray-800">Manajemen Transaksi</h1>
+                    <h1 class="h3 mb-4 text-gray-800">Proses Checkout (Kasir)</h1>
 
-                    <?php if (!empty($message)): ?>
-                        <div class="alert alert-success" role="alert">
-                            <?php echo $message; ?>
+                    <div class="row">
+                        <div class="col-lg-6">
+                            <div class="card shadow mb-4">
+                                <div class="card-header py-3">
+                                    <h6 class="m-0 font-weight-bold text-primary">Pilih Produk</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-group">
+                                        <label for="categoryFilter">Filter Berdasarkan Kategori:</label>
+                                        <select class="form-control" id="categoryFilter">
+                                            <option value="">Semua Kategori</option>
+                                            <?php foreach ($categories as $cat): ?>
+                                                <option value="<?php echo htmlspecialchars($cat['id']); ?>">
+                                                    <?php echo htmlspecialchars($cat['name']); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="productSearch">Cari Produk (Nama):</label>
+                                        <input type="text" id="productSearch" class="form-control" placeholder="Cari nama produk...">
+                                    </div>
+                                    <div id="productList" style="max-height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px;">
+                                        <p class="text-center text-muted">Pilih kategori atau ketik nama produk...</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    <?php endif; ?>
 
-                    <?php if (!empty($error)): ?>
-                        <div class="alert alert-danger" role="alert">
-                            <?php echo $error; ?>
-                        </div>
-                    <?php endif; ?>
+                        <div class="col-lg-6">
+                            <div class="card shadow mb-4">
+                                <div class="card-header py-3">
+                                    <h6 class="m-0 font-weight-bold text-primary">Keranjang Belanja</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered" id="cartTable" width="100%" cellspacing="0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Produk</th>
+                                                    <th>Harga</th>
+                                                    <th>Qty</th>
+                                                    <th>Subtotal</th>
+                                                    <th>Aksi</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="cartItems">
+                                                <tr><td colspan="5" class="text-center text-muted">Keranjang kosong.</td></tr>
+                                            </tbody>
+                                            <tfoot>
+                                                <tr>
+                                                    <td colspan="3" class="text-right"><strong>Total Belanja:</strong></td>
+                                                    <td colspan="2"><strong id="totalBill">Rp 0</strong></td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
 
-                    <div class="card shadow mb-4">
-                        <div class="card-header py-3">
-                            <h6 class="m-0 font-weight-bold text-primary">Daftar Transaksi Pelanggan</h6>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
-                                    <thead>
-                                        <tr>
-                                            <th>ID Transaksi</th>
-                                            <th>ID Pelanggan</th>
-                                            <th>Nama Pelanggan</th>
-                                            <th>Tanggal Pesanan</th>
-                                            <th>Total Harga</th>
-                                            <th>Total Jumlah Dibayar</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php
-                                        if ($transactions_result && $transactions_result->num_rows > 0) {
-                                            while ($row = $transactions_result->fetch_assoc()) {
-                                                echo "<tr>";
-                                                echo "<td>" . htmlspecialchars($row['id']) . "</td>";
-                                                echo "<td>" . htmlspecialchars($row['user_id']) . "</td>";
-                                                echo "<td>" . htmlspecialchars($row['user_name']) . "</td>";
-                                                echo "<td>" . htmlspecialchars($row['order_date']) . "</td>";
-                                                echo "<td>Rp " . number_format($row['total_amount'], 0, ',', '.') . "</td>";
-                                                echo "<td><span class='badge badge-status-" . htmlspecialchars($row['status']) . "'>" . ucfirst(htmlspecialchars($row['status'])) . "</span></td>";
-                                                echo "<td class='action-buttons'>";
-                                                // Tombol untuk melihat detail (opsional, jika ada halaman view_transaction_details.php)
-                                                // echo "<a href='view_transaction_details.php?id=" . $row['id'] . "' class='btn btn-info btn-sm mr-1' title='Lihat Detail Transaksi'><i class='fas fa-eye'></i></a>";
-                                                
-                                                // Form untuk update status
-                                                echo "<form action='manage_transactions.php' method='POST' style='display:inline-block;'>";
-                                                echo "<input type='hidden' name='transaction_id' value='" . $row['id'] . "'>";
-                                                echo "<select name='new_status' class='form-control form-control-sm d-inline w-auto mr-1'>";
-                                                $statuses = ['pending', 'processed', 'completed', 'cancelled', 'refunded'];
-                                                foreach ($statuses as $status_option) {
-                                                    $selected = ($status_option == $row['status']) ? 'selected' : '';
-                                                    echo "<option value='" . $status_option . "' " . $selected . ">" . ucfirst($status_option) . "</option>";
-                                                }
-                                                echo "</select>";
-                                                echo "<button type='submit' name='update_status' class='btn btn-success btn-sm' title='Update Status'><i class='fas fa-sync'></i> Update</button>";
-                                                echo "</form>";
-                                                echo "</td>";
-                                                echo "</tr>";
-                                            }
-                                        } else {
-                                            echo "<tr><td colspan='8'>Tidak ada transaksi ditemukan.</td></tr>";
-                                        }
-                                        ?>
-                                    </tbody>
-                                </table>
+                                    <hr>
+
+                                    <form id="checkoutForm" action="manage_transactions.php" method="POST">
+                                        <input type="hidden" name="action" value="process_checkout">
+                                        <input type="hidden" name="total_bill" id="hiddenTotalBill">
+                                        <input type="hidden" name="cart_items" id="hiddenCartItems">
+                                        
+                                        <div class="form-group">
+                                            <label>Total Belanja:</label>
+                                            <p class="form-control-static"><strong id="displayTotalBill">Rp 0</strong></p>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="paymentMethod">Metode Pembayaran:</label>
+                                            <select class="form-control" id="paymentMethod" name="payment_method" disabled>
+                                                <option value="Cash" selected>Cash</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="customerPaymentAmount">Jumlah Uang dari Pelanggan (Rp):</label>
+                                            <input type="number" class="form-control" id="customerPaymentAmount" name="customer_payment_amount" step="any" min="0" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Kembalian:</label>
+                                            <p class="form-control-static"><strong id="changeAmount">Rp 0</strong></p>
+                                        </div>
+
+                                        <button type="submit" class="btn btn-primary btn-block" id="processCheckoutBtn" disabled>Proses Checkout</button>
+                                    </form>
+                                </div>
                             </div>
                         </div>
                     </div>
-
                 </div>
-                </div>
+            </div>
             <footer class="sticky-footer bg-white">
                 <div class="container my-auto">
                     <div class="copyright text-center my-auto">
-                        <span>Copyright &copy; SkinGlow! 2025</span>
+                        <span>Copyright &copy; SkinGlow! 2024</span>
                     </div>
                 </div>
             </footer>
-            </div>
         </div>
+    </div>
     <a class="scroll-to-top rounded" href="#page-top">
         <i class="fas fa-angle-up"></i>
     </a>
@@ -291,21 +365,243 @@ $conn->close();
 
     <script src="../../vendor/jquery/jquery.min.js"></script>
     <script src="../../vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-
     <script src="../../vendor/jquery-easing/jquery.easing.min.js"></script>
-
     <script src="../../js/sb-admin-2.min.js"></script>
-
-    <script src="../../vendor/datatables/jquery.dataTables.min.js"></script>
-    <script src="../../vendor/datatables/dataTables.bootstrap4.min.js"></script>
-
-    <script src="../../js/demo/datatables-demo.js"></script>
 
     <script>
         $(document).ready(function() {
-            <?php if (isset($_SESSION['user_name'])): ?>
-                $('.navbar-nav .text-gray-600.small').text('<?php echo htmlspecialchars($_SESSION['user_name']); ?>');
-            <?php endif; ?>
+            let cart = [];
+            let products = [];
+
+            function loadProducts() {
+                const searchQuery = $('#productSearch').val();
+                const categoryId = $('#categoryFilter').val();
+
+                $.ajax({
+                    url: '../../api/get_products.php',
+                    method: 'GET',
+                    data: {
+                        search: searchQuery,
+                        category_id: categoryId
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.success) {
+                            products = response.data;
+                            displayProducts(products);
+                        } else {
+                            $('#productList').html('<p class="text-danger">Gagal memuat produk: ' + response.message + '</p>');
+                            console.error("API Error: ", response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        let errorMessage = 'Terjadi kesalahan saat memuat produk.';
+                        if (xhr.status === 404) {
+                            errorMessage += ' File API (get_products.php) tidak ditemukan. Periksa path.';
+                        } else if (xhr.status === 403) {
+                            errorMessage += ' Akses ditolak. Pastikan Anda login sebagai admin.';
+                        } else {
+                            errorMessage += ' Respons: ' + xhr.responseText;
+                        }
+                        $('#productList').html('<p class="text-danger">' + errorMessage + '</p>');
+                        console.error("AJAX Error: ", status, error, xhr.responseText);
+                    }
+                });
+            }
+
+            function displayProducts(productsToDisplay) {
+                let html = '';
+                if (productsToDisplay.length > 0) {
+                    productsToDisplay.forEach(product => {
+                        const inCart = cart.some(item => item.id === product.id);
+                        const selectedClass = inCart ? 'selected' : '';
+                        const outOfStockClass = product.stock <= 0 ? 'out-of-stock' : '';
+                        const isDisabled = product.stock <= 0 ? 'disabled' : '';
+
+                        html += `
+                            <div class="product-item d-flex justify-content-between align-items-center ${selectedClass} ${outOfStockClass}" data-id="${product.id}" data-name="${product.name}" data-price="${product.price}" data-stock="${product.stock}">
+                                <div>
+                                    <strong>${product.name}</strong><br>
+                                    Harga: Rp ${number_format(product.price)} | Stok: ${product.stock}
+                                </div>
+                                <button class="btn btn-sm btn-primary add-to-cart-btn" data-id="${product.id}" ${isDisabled}>
+                                    ${product.stock <= 0 ? 'Stok Habis' : '<i class="fas fa-plus"></i> Tambah'}
+                                </button>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html = '<p class="text-center text-muted">Tidak ada produk ditemukan untuk kriteria ini.</p>';
+                }
+                $('#productList').html(html);
+            }
+
+            function addToCart(productId) {
+                const product = products.find(p => p.id == productId);
+                if (!product) return;
+
+                const existingItem = cart.find(item => item.id === productId);
+
+                if (existingItem) {
+                    if (existingItem.quantity < product.stock) {
+                        existingItem.quantity++;
+                    } else {
+                        alert('Stok produk "' + product.name + '" tidak mencukupi.');
+                        return;
+                    }
+                } else {
+                    if (product.stock > 0) {
+                        cart.push({
+                            id: product.id,
+                            name: product.name,
+                            price: parseFloat(product.price),
+                            quantity: 1,
+                            stock: product.stock
+                        });
+                    } else {
+                        alert('Stok produk "' + product.name + '" sudah habis.');
+                        return;
+                    }
+                }
+                updateCartDisplay();
+            }
+
+            function updateCartDisplay() {
+                let html = '';
+                let totalBill = 0;
+
+                if (cart.length > 0) {
+                    cart.forEach(item => {
+                        const subtotal = item.price * item.quantity;
+                        totalBill += subtotal;
+                        html += `
+                            <tr id="cart-item-${item.id}">
+                                <td>${item.name}</td>
+                                <td>Rp ${number_format(item.price)}</td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm item-qty" data-id="${item.id}" value="${item.quantity}" min="1" max="${item.stock}">
+                                </td>
+                                <td>Rp ${number_format(subtotal)}</td>
+                                <td>
+                                    <button class="btn btn-danger btn-sm remove-from-cart-btn" data-id="${item.id}"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    html = '<tr><td colspan="5" class="text-center text-muted">Keranjang kosong.</td></tr>';
+                }
+                $('#cartItems').html(html);
+                $('#totalBill').text('Rp ' + number_format(totalBill));
+                $('#displayTotalBill').text('Rp ' + number_format(totalBill));
+                $('#hiddenTotalBill').val(totalBill);
+                $('#hiddenCartItems').val(JSON.stringify(cart));
+
+                // Otomatis isi Jumlah Uang dari Pelanggan dengan Total Belanja
+                $('#customerPaymentAmount').val(totalBill); 
+                calculateChange();
+                updateCheckoutButtonState(totalBill);
+                updateProductListSelectedState();
+            }
+
+            function updateProductListSelectedState() {
+                $('.product-item').removeClass('selected');
+                cart.forEach(item => {
+                    $(`.product-item[data-id="${item.id}"]`).addClass('selected');
+                });
+            }
+
+            function removeFromCart(productId) {
+                cart = cart.filter(item => item.id !== productId);
+                updateCartDisplay();
+            }
+
+            function calculateChange() {
+                const totalBill = parseFloat($('#hiddenTotalBill').val() || 0);
+                const customerPaymentAmount = parseFloat($('#customerPaymentAmount').val() || 0);
+                const change = customerPaymentAmount - totalBill;
+                $('#changeAmount').text('Rp ' + number_format(change > 0 ? change : 0));
+                updateCheckoutButtonState(totalBill);
+            }
+
+            function updateCheckoutButtonState(totalBill) {
+                const customerPaymentAmount = parseFloat($('#customerPaymentAmount').val() || 0);
+                if (totalBill > 0 && customerPaymentAmount >= totalBill) {
+                    $('#processCheckoutBtn').prop('disabled', false);
+                } else {
+                    $('#processCheckoutBtn').prop('disabled', true);
+                }
+            }
+
+            function number_format(number, decimals = 0, dec_point = ',', thousands_sep = '.') {
+                number = (number + '').replace(/[^0-9+\-Ee.]/g, '');
+                var n = !isFinite(+number) ? 0 : +number,
+                    prec = !isFinite(+decimals) ? 0 : Math.abs(decimals),
+                    sep = (typeof thousands_sep === 'undefined') ? '.' : thousands_sep,
+                    dec = (typeof dec_point === 'undefined') ? ',' : dec_point,
+                    s = '',
+                    toFixedFix = function(n, prec) {
+                        var k = Math.pow(10, prec);
+                        return '' + Math.round(n * k) / k;
+                    };
+                s = (prec ? toFixedFix(n, prec) : '' + Math.round(n)).split('.');
+                if (s[0].length > 3) {
+                    s[0] = s[0].replace(/\B(?=(?:\d{3})+(?!\d))/g, sep);
+                }
+                if ((s[1] || '').length < prec) {
+                    s[1] = s[1] || '';
+                    s[1] += new Array(prec - s[1].length + 1).join('0');
+                }
+                return s.join(dec);
+            }
+
+            $('#productSearch').on('keyup', function() {
+                loadProducts();
+            });
+
+            $('#categoryFilter').on('change', function() {
+                loadProducts();
+            });
+
+            $(document).on('click', '.product-item .add-to-cart-btn', function() {
+                if ($(this).is(':disabled')) {
+                    return;
+                }
+                const productId = $(this).data('id');
+                addToCart(productId);
+            });
+
+            $(document).on('change', '.item-qty', function() {
+                const productId = $(this).data('id');
+                let newQty = parseInt($(this).val());
+                const productStock = parseInt($(this).attr('max'));
+
+                if (isNaN(newQty) || newQty < 1) {
+                    newQty = 1;
+                    $(this).val(newQty);
+                }
+                if (newQty > productStock) {
+                    alert('Kuantitas tidak boleh melebihi stok yang tersedia (' + productStock + ').');
+                    newQty = productStock;
+                    $(this).val(newQty);
+                }
+
+                const itemIndex = cart.findIndex(item => item.id === productId);
+                if (itemIndex > -1) {
+                    cart[itemIndex].quantity = newQty;
+                    updateCartDisplay();
+                }
+            });
+
+            $(document).on('click', '.remove-from-cart-btn', function() {
+                const productId = $(this).data('id');
+                removeFromCart(productId);
+            });
+
+            $('#customerPaymentAmount').on('input', calculateChange);
+
+            loadProducts();
+            updateCartDisplay();
         });
     </script>
 </body>

@@ -1,11 +1,4 @@
 <?php
-session_start();
-
-// Cek apakah user sudah login DAN role-nya adalah 'admin'
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header("Location: ../login.html?error=Akses tidak diizinkan untuk role ini.");
-    exit();
-}
 
 require_once '../../config/database.php'; // Pastikan path ini benar
 
@@ -87,13 +80,6 @@ $categories_result = $conn->query($categories_sql);
                 </a>
             </li>
 
-            <li class="nav-item">
-                <a class="nav-link" href="../users/manage_users.php">
-                    <i class="fas fa-fw fa-users"></i>
-                    <span>Pelanggan</span>
-                </a>
-            </li>
-            
             <hr class="sidebar-divider">
 
             <div class="sidebar-heading">
@@ -147,18 +133,10 @@ $categories_result = $conn->query($categories_sql);
                                     ?>
                                 </span>
                                 <img class="img-profile rounded-circle"
-                                    src="../img/undraw_profile.svg">
+                                    src="../../img/undraw_profile.svg">
                             </a>
                             <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in"
                                 aria-labelledby="userDropdown">
-                                <a class="dropdown-item" href="#">
-                                    <i class="fas fa-user fa-sm fa-fw mr-2 text-gray-400"></i>
-                                    Profil
-                                </a>
-                                <a class="dropdown-item" href="#">
-                                    <i class="fas fa-cogs fa-sm fa-fw mr-2 text-gray-400"></i>
-                                    Pengaturan
-                                </a>
                                 <div class="dropdown-divider"></div>
                                 <a class="dropdown-item" href="#" data-toggle="modal" data-target="#logoutModal">
                                     <i class="fas fa-sign-out-alt fa-sm fa-fw mr-2 text-gray-400"></i>

@@ -1,13 +1,12 @@
 <?php
-session_start();
 
-// Cek apakah user sudah login DAN role-nya adalah 'admin'
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header("Location: ../login.html?error=Akses tidak diizinkan untuk role ini.");
-    exit();
-}
+// Aktifkan error reporting untuk debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-require_once '../config/database.php'; // Pastikan path ini benar
+session_start(); // Start the session if it's not started elsewhere
+
+require_once '../config/database.php'; 
 
 $conn = get_db_connection();
 
@@ -16,31 +15,32 @@ $error = '';
 
 // Inisialisasi filter tanggal
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01'); // Default: awal bulan ini
-$end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');     // Default: hari ini
+$end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d'); // Default: hari ini
 
 // --- Logika Pengambilan Data Laporan Penjualan ---
 
 // 1. Total Pendapatan & Jumlah Pesanan
 $total_revenue = 0;
 $total_orders = 0;
-$total_items_sold = 0; // Untuk total kuantitas produk terjual
+$total_items_sold = 0;
 
 $revenue_query = "
     SELECT
-        SUM(total_amount) AS total_revenue,
-        COUNT(id) AS total_orders
+        COALESCE(SUM(total_amount), 0) AS total_revenue,
+        COALESCE(COUNT(id), 0) AS total_orders
     FROM orders
-    WHERE status IN ('completed', 'processed')
-    AND order_date BETWEEN ? AND ? + INTERVAL 1 DAY;
-"; // + INTERVAL 1 DAY agar tanggal akhir inklusif
+    WHERE status IN ('completed')
+    AND order_date BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY);
+"; // DATE_ADD lebih eksplisit daripada + INTERVAL 1 DAY
+
 $stmt_revenue = $conn->prepare($revenue_query);
 if ($stmt_revenue) {
     $stmt_revenue->bind_param("ss", $start_date, $end_date);
     $stmt_revenue->execute();
     $result_revenue = $stmt_revenue->get_result();
     $data_revenue = $result_revenue->fetch_assoc();
-    $total_revenue = $data_revenue['total_revenue'] ?? 0;
-    $total_orders = $data_revenue['total_orders'] ?? 0;
+    $total_revenue = $data_revenue['total_revenue'];
+    $total_orders = $data_revenue['total_orders'];
     $stmt_revenue->close();
 } else {
     $error .= "Error getting revenue data: " . $conn->error . "<br>";
@@ -49,11 +49,11 @@ if ($stmt_revenue) {
 // 2. Total Kuantitas Produk Terjual (untuk item dari pesanan yang sudah completed/processed)
 $items_sold_query = "
     SELECT
-        SUM(oi.quantity) AS total_items_sold
+        COALESCE(SUM(oi.quantity), 0) AS total_items_sold
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.id
     WHERE o.status IN ('completed', 'processed')
-    AND o.order_date BETWEEN ? AND ? + INTERVAL 1 DAY;
+    AND o.order_date BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY);
 ";
 $stmt_items_sold = $conn->prepare($items_sold_query);
 if ($stmt_items_sold) {
@@ -61,28 +61,29 @@ if ($stmt_items_sold) {
     $stmt_items_sold->execute();
     $result_items_sold = $stmt_items_sold->get_result();
     $data_items_sold = $result_items_sold->fetch_assoc();
-    $total_items_sold = $data_items_sold['total_items_sold'] ?? 0;
+    $total_items_sold = $data_items_sold['total_items_sold'];
     $stmt_items_sold->close();
 } else {
     $error .= "Error getting total items sold: " . $conn->error . "<br>";
 }
 
 // 3. Data untuk Laporan Produk Terlaris (berdasarkan kuantitas terjual)
+// Perhatikan: Menggunakan price_at_order yang seharusnya ada di order_items
 $top_products_query = "
     SELECT
         p.name AS product_name,
-        SUM(oi.quantity) AS total_quantity_sold,
-        SUM(oi.quantity * oi.price) AS revenue_from_product
+        COALESCE(SUM(oi.quantity), 0) AS total_quantity_sold,
+        COALESCE(SUM(oi.quantity * oi.price_at_order), 0) AS revenue_from_product
     FROM order_items oi
     JOIN products p ON oi.product_id = p.id
-    JOIN categories c ON p.category_id = c.id
     JOIN orders o ON oi.order_id = o.id
     WHERE o.status IN ('completed', 'processed')
-    AND o.order_date BETWEEN ? AND ? + INTERVAL 1 DAY
+    AND o.order_date BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY p.id, p.name
     ORDER BY total_quantity_sold DESC
     LIMIT 10;
 ";
+$top_products_result = null; // Inisialisasi
 $stmt_top_products = $conn->prepare($top_products_query);
 if ($stmt_top_products) {
     $stmt_top_products->bind_param("ss", $start_date, $end_date);
@@ -94,20 +95,22 @@ if ($stmt_top_products) {
 }
 
 // 4. Data untuk Laporan Kategori Terlaris (berdasarkan total pendapatan)
+// Menggunakan price_at_order dari order_items
 $top_categories_query = "
     SELECT
         c.name AS category_name,
-        SUM(oi.quantity * oi.price) AS total_category_revenue
+        COALESCE(SUM(oi.quantity * oi.price_at_order), 0) AS total_category_revenue
     FROM order_items oi
     JOIN products p ON oi.product_id = p.id
     JOIN categories c ON p.category_id = c.id
     JOIN orders o ON oi.order_id = o.id
     WHERE o.status IN ('completed', 'processed')
-    AND o.order_date BETWEEN ? AND ? + INTERVAL 1 DAY
+    AND o.order_date BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY c.id, c.name
     ORDER BY total_category_revenue DESC
     LIMIT 5;
 ";
+$top_categories_result = null; // Inisialisasi
 $stmt_top_categories = $conn->prepare($top_categories_query);
 if ($stmt_top_categories) {
     $stmt_top_categories->bind_param("ss", $start_date, $end_date);
@@ -123,8 +126,8 @@ $monthly_sales_data = [];
 $query_monthly_sales = "
     SELECT
         DATE_FORMAT(order_date, '%Y-%m') AS sales_month,
-        SUM(total_amount) AS monthly_revenue,
-        COUNT(id) AS monthly_orders
+        COALESCE(SUM(total_amount), 0) AS monthly_revenue,
+        COALESCE(COUNT(id), 0) AS monthly_orders
     FROM orders
     WHERE status IN ('completed', 'processed')
     GROUP BY sales_month
@@ -151,10 +154,10 @@ $daily_sales_data = array_fill(0, 7, 0); // Inisialisasi dengan 0
 $query_daily_weekday = "
     SELECT
         DAYOFWEEK(order_date) AS day_of_week,
-        SUM(total_amount) AS daily_revenue
+        COALESCE(SUM(total_amount), 0) AS daily_revenue
     FROM orders
     WHERE status IN ('completed', 'processed')
-    AND order_date BETWEEN ? AND ? + INTERVAL 1 DAY
+    AND order_date BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY)
     GROUP BY DAYOFWEEK(order_date)
     ORDER BY DAYOFWEEK(order_date);
 ";
@@ -186,7 +189,7 @@ if ($start_date == $end_date) {
     $query_hourly = "
         SELECT
             HOUR(order_date) AS hour_of_day,
-            SUM(total_amount) AS hourly_revenue
+            COALESCE(SUM(total_amount), 0) AS hourly_revenue
         FROM orders
         WHERE status IN ('completed', 'processed')
         AND DATE(order_date) = ?
@@ -226,13 +229,11 @@ $conn->close();
     <link href="../css/index_admin.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/custom_admin.css">
     <link href="../vendor/datatables/dataTables.bootstrap4.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body id="page-top">
     <div id="wrapper">
         <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
-            <a class="sidebar-brand d-flex align-items-center justify-content-center" href="index.php">
+            <a class="sidebar-brand d-flex align-items-center justify-content-center" href="../index.php">
                 <div class="sidebar-brand-icon rotate-n-15">
                     <i class="fas fa-cubes"></i>
                 </div>
@@ -240,7 +241,7 @@ $conn->close();
             </a>
             <hr class="sidebar-divider my-0">
             <li class="nav-item">
-                <a class="nav-link" href="index.php">
+                <a class="nav-link" href="../index.php">
                     <i class="fas fa-fw fa-tachometer-alt"></i>
                     <span>Dashboard</span>
                 </a>
@@ -263,12 +264,6 @@ $conn->close();
                 <a class="nav-link" href="orders/manage_orders.php">
                     <i class="fas fa-fw fa-shopping-cart"></i>
                     <span>Pesanan</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="users/manage_users.php">
-                    <i class="fas fa-fw fa-users"></i>
-                    <span>Pelanggan</span>
                 </a>
             </li>
             <hr class="sidebar-divider">
@@ -302,7 +297,7 @@ $conn->close();
                         <li class="nav-item dropdown no-arrow">
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                 <span class="mr-2 d-none d-lg-inline text-gray-600 small">
-                                    <?php echo htmlspecialchars($_SESSION['user_name'] ?? 'Admin Default'); ?>
+                                    <?php echo htmlspecialchars($_SESSION['user_name'] ?? 'Admin'); ?>
                                 </span>
                                 <img class="img-profile rounded-circle" src="../img/undraw_profile.svg">
                             </a>
@@ -474,7 +469,9 @@ $conn->close();
                                     </thead>
                                     <tbody>
                                         <?php
+                                        // Pastikan $top_products_result bukan null sebelum mencoba fetch
                                         if ($top_products_result && $top_products_result->num_rows > 0) {
+                                            $top_products_result->data_seek(0); // Reset pointer jika sudah pernah dibaca
                                             while ($row = $top_products_result->fetch_assoc()) {
                                                 echo "<tr>";
                                                 echo "<td>" . htmlspecialchars($row['product_name']) . "</td>";
@@ -507,7 +504,9 @@ $conn->close();
                                     </thead>
                                     <tbody>
                                         <?php
+                                        // Pastikan $top_categories_result bukan null sebelum mencoba fetch
                                         if ($top_categories_result && $top_categories_result->num_rows > 0) {
+                                            $top_categories_result->data_seek(0); // Reset pointer jika sudah pernah dibaca
                                             while ($row = $top_categories_result->fetch_assoc()) {
                                                 echo "<tr>";
                                                 echo "<td>" . htmlspecialchars($row['category_name']) . "</td>";
@@ -563,7 +562,8 @@ $conn->close();
     <script src="../js/sb-admin-2.min.js"></script>
     <script src="../vendor/datatables/jquery.dataTables.min.js"></script>
     <script src="../vendor/datatables/dataTables.bootstrap4.min.js"></script>
-    <script src="../js/demo/datatables-demo.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
     <script>
         $(document).ready(function() {
@@ -594,176 +594,165 @@ $conn->close();
                 return s.join(dec);
             }
 
-            // --- Chart.js Konfigurasi (Hanya untuk grafik yang tersisa) ---
+            // --- Chart.js Konfigurasi ---
 
             // Grafik Penjualan per Hari dalam Seminggu
-            var dailyWeekdaySalesCtx = document.getElementById('dailyWeekdaySalesChart').getContext('2d');
-            var dailyWeekdaySalesChart = new Chart(dailyWeekdaySalesCtx, {
-                type: 'bar',
-                data: {
-                    labels: <?php echo json_encode($daily_sales_labels); ?>,
-                    datasets: [{
-                        label: 'Pendapatan',
-                        backgroundColor: '#4e73df',
-                        hoverBackgroundColor: '#2e59d9',
-                        borderColor: '#4e73df',
-                        data: <?php echo json_encode($daily_sales_data); ?>,
-                    }]
-                },
-                options: {
-                    maintainAspectRatio: false,
-                    layout: {
-                        padding: {
-                            left: 10,
-                            right: 25,
-                            top: 25,
-                            bottom: 0
-                        }
+            var dailyWeekdaySalesCtx = document.getElementById('dailyWeekdaySalesChart');
+            if (dailyWeekdaySalesCtx) { // Check if canvas exists
+                var dailyWeekdaySalesChart = new Chart(dailyWeekdaySalesCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: <?php echo json_encode($daily_sales_labels); ?>,
+                        datasets: [{
+                            label: 'Pendapatan',
+                            backgroundColor: '#4e73df',
+                            hoverBackgroundColor: '#2e59d9',
+                            borderColor: '#4e73df',
+                            data: <?php echo json_encode($daily_sales_data); ?>,
+                        }]
                     },
-                    scales: {
-                        x: {
-                            grid: {
-                                display: false,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                maxRotation: 0,
-                                minRotation: 0
+                    options: {
+                        maintainAspectRatio: false,
+                        layout: {
+                            padding: {
+                                left: 10,
+                                right: 25,
+                                top: 25,
+                                bottom: 0
                             }
                         },
-                        y: {
-                            ticks: {
-                                min: 0,
-                                maxTicksLimit: 5,
-                                padding: 10,
-                                callback: function(value, index, values) {
-                                    return 'Rp ' + number_format(value);
+                        scales: {
+                            x: { // Menggunakan 'x' untuk Chart.js v3+
+                                grid: {
+                                    display: false,
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    maxRotation: 0,
+                                    minRotation: 0
                                 }
                             },
-                            grid: {
-                                color: "rgb(234, 236, 244)",
-                                zeroLineColor: "rgb(234, 236, 244)",
-                                drawBorder: false,
-                                borderDash: [2],
-                                zeroLineBorderDash: [2]
-                            }
-                        },
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            backgroundColor: "rgb(255,255,255)",
-                            bodyColor: "#858796",
-                            titleMarginBottom: 10,
-                            titleColor: '#6e707e',
-                            titleFont: {
-                                weight: 'bold'
+                            y: { // Menggunakan 'y' untuk Chart.js v3+
+                                ticks: {
+                                    min: 0,
+                                    maxTicksLimit: 5,
+                                    padding: 10,
+                                    callback: function(value, index, values) {
+                                        return 'Rp ' + number_format(value);
+                                    }
+                                },
+                                grid: {
+                                    color: "rgb(234, 236, 244)",
+                                    zeroLineColor: "rgb(234, 236, 244)",
+                                    drawBorder: false,
+                                    borderDash: [2],
+                                    zeroLineBorderDash: [2]
+                                }
                             },
-                            borderColor: '#dddfeb',
-                            borderWidth: 1,
-                            xPadding: 15,
-                            yPadding: 15,
-                            displayColors: false,
-                            intersect: false,
-                            mode: 'index',
-                            caretPadding: 10,
-                            callbacks: {
-                                label: function(context) {
-                                    return context.dataset.label + ': Rp ' + number_format(context.raw);
+                        },
+                        plugins: { // 'plugins' for Chart.js v3+ instead of 'legend' directly
+                            legend: {
+                                display: false
+                            },
+                            tooltip: { // 'tooltip' for Chart.js v3+ instead of 'tooltips'
+                                displayColors: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        var label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += 'Rp ' + number_format(context.parsed.y);
+                                        }
+                                        return label;
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
 
-            // Grafik Penjualan per Jam (Hanya tampil jika start_date == end_date)
+            // Grafik Penjualan per Jam
             <?php if ($start_date == $end_date): ?>
-            var hourlySalesCtx = document.getElementById('hourlySalesChart').getContext('2d');
-            var hourlySalesChart = new Chart(hourlySalesCtx, {
-                type: 'bar',
-                data: {
-                    labels: <?php echo json_encode($hourly_sales_labels); ?>,
-                    datasets: [{
-                        label: 'Pendapatan',
-                        backgroundColor: '#1cc88a', // Warna hijau
-                        hoverBackgroundColor: '#17a673',
-                        borderColor: '#1cc88a',
-                        data: <?php echo json_encode($hourly_sales_data); ?>,
-                    }]
-                },
-                options: {
-                    maintainAspectRatio: false,
-                    layout: {
-                        padding: {
-                            left: 10,
-                            right: 25,
-                            top: 25,
-                            bottom: 0
-                        }
+            var hourlySalesCtx = document.getElementById('hourlySalesChart');
+            if (hourlySalesCtx) { // Check if canvas exists
+                var hourlySalesChart = new Chart(hourlySalesCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: <?php echo json_encode($hourly_sales_labels); ?>,
+                        datasets: [{
+                            label: 'Pendapatan',
+                            backgroundColor: '#1cc88a',
+                            hoverBackgroundColor: '#17a673',
+                            borderColor: '#1cc88a',
+                            data: <?php echo json_encode($hourly_sales_data); ?>,
+                        }]
                     },
-                    scales: {
-                        x: {
-                            grid: {
-                                display: false,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                maxRotation: 45, // Rotasi label agar tidak tumpang tindih
-                                minRotation: 45
+                    options: {
+                        maintainAspectRatio: false,
+                        layout: {
+                            padding: {
+                                left: 10,
+                                right: 25,
+                                top: 25,
+                                bottom: 0
                             }
                         },
-                        y: {
-                            ticks: {
-                                min: 0,
-                                maxTicksLimit: 5,
-                                padding: 10,
-                                callback: function(value, index, values) {
-                                    return 'Rp ' + number_format(value);
+                        scales: {
+                            x: {
+                                grid: {
+                                    display: false,
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    maxRotation: 45, // Allow some rotation for hourly labels
+                                    minRotation: 0
                                 }
                             },
-                            grid: {
-                                color: "rgb(234, 236, 244)",
-                                zeroLineColor: "rgb(234, 236, 244)",
-                                drawBorder: false,
-                                borderDash: [2],
-                                zeroLineBorderDash: [2]
-                            }
-                        },
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            backgroundColor: "rgb(255,255,255)",
-                            bodyColor: "#858796",
-                            titleMarginBottom: 10,
-                            titleColor: '#6e707e',
-                            titleFont: {
-                                weight: 'bold'
+                            y: {
+                                ticks: {
+                                    min: 0,
+                                    maxTicksLimit: 5,
+                                    padding: 10,
+                                    callback: function(value, index, values) {
+                                        return 'Rp ' + number_format(value);
+                                    }
+                                },
+                                grid: {
+                                    color: "rgb(234, 236, 244)",
+                                    zeroLineColor: "rgb(234, 236, 244)",
+                                    drawBorder: false,
+                                    borderDash: [2],
+                                    zeroLineBorderDash: [2]
+                                }
                             },
-                            borderColor: '#dddfeb',
-                            borderWidth: 1,
-                            xPadding: 15,
-                            yPadding: 15,
-                            displayColors: false,
-                            intersect: false,
-                            mode: 'index',
-                            caretPadding: 10,
-                            callbacks: {
-                                label: function(context) {
-                                    return context.dataset.label + ': Rp ' + number_format(context.raw);
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                displayColors: false,
+                                callbacks: {
+                                    label: function(context) {
+                                        var label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += 'Rp ' + number_format(context.parsed.y);
+                                        }
+                                        return label;
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
             <?php endif; ?>
-
         });
     </script>
 </body>

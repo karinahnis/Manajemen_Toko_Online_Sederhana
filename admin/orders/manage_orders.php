@@ -1,11 +1,4 @@
 <?php
-session_start();
-
-// Cek apakah user sudah login DAN role-nya adalah 'admin'
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header("Location: ../login.html?error=Akses tidak diizinkan untuk role ini.");
-    exit();
-}
 
 require_once '../../config/database.php';
 
@@ -15,53 +8,17 @@ $conn = get_db_connection();
 $message = ''; // Untuk pesan sukses
 $error = '';   // Untuk pesan error
 
-// --- Bagian ini dihapus: Logika untuk Hapus Pesanan ---
-// if (isset($_GET['action']) && $_GET['action'] == 'delete') {
-//     $order_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-
-//     if ($order_id > 0) {
-//         $conn->begin_transaction(); // Mulai transaksi
-//         try {
-//             // Hapus item pesanan terkait terlebih dahulu (karena foreign key constraint)
-//             $stmt_delete_items = $conn->prepare("DELETE FROM order_items WHERE order_id = ?");
-//             $stmt_delete_items->bind_param("i", $order_id);
-//             $stmt_delete_items->execute();
-//             $stmt_delete_items->close();
-
-//             // Hapus pesanan itu sendiri
-//             $stmt_delete_order = $conn->prepare("DELETE FROM orders WHERE id = ?");
-//             $stmt_delete_order->bind_param("i", $order_id);
-//             $stmt_delete_order->execute();
-//             $stmt_delete_order->close();
-
-//             $conn->commit(); // Commit transaksi jika semua berhasil
-//             $_SESSION['message'] = "Pesanan #{$order_id} berhasil dihapus!";
-//             header("Location: manage_orders.php"); // Redirect untuk menghilangkan parameter GET
-//             exit();
-//         } catch (mysqli_sql_exception $e) {
-//             $conn->rollback(); // Rollback jika ada error
-//             $_SESSION['error'] = "Gagal menghapus pesanan #{$order_id}: " . $e->getMessage();
-//             header("Location: manage_orders.php"); // Redirect untuk menghilangkan parameter GET
-//             exit();
-//         }
-//     } else {
-//         $_SESSION['error'] = "ID Pesanan tidak valid untuk dihapus.";
-//         header("Location: manage_orders.php"); // Redirect untuk menghilangkan parameter GET
-//         exit();
-//     }
-// }
-
-// Ambil pesan dari URL jika ada (setelah redirect dari edit_order.php atau operasi sebelumnya)
-if (isset($_SESSION['message'])) {
-    $message = $_SESSION['message'];
-    unset($_SESSION['message']); // Hapus pesan setelah ditampilkan
+// Ambil pesan dari URL jika ada (setelah redirect dari manage_transactions.php atau operasi sebelumnya)
+if (isset($_GET['message'])) {
+    $message = $_GET['message'];
+  
 }
-if (isset($_SESSION['error'])) {
-    $error = $_SESSION['error'];
-    unset($_SESSION['error']); // Hapus error setelah ditampilkan
+if (isset($_GET['error'])) {
+    $error = $_GET['error'];
+   
 }
 
-// --- Ambil data pesanan untuk ditampilkan ---
+// Ambil data pesanan untuk ditampilkan
 $orders = [];
 $query_orders = "SELECT
                             o.id AS order_id,
@@ -69,10 +26,9 @@ $query_orders = "SELECT
                             o.total_amount,
                             o.status,
                             o.order_date,
-                            o.shipping_address,
                             o.payment_method
                         FROM orders o
-                        JOIN users u ON o.user_id = u.id
+                        LEFT JOIN users u ON o.user_id = u.id -- Gunakan LEFT JOIN agar pesanan tanpa user_id (misal dari kasir) tetap muncul
                         ORDER BY o.order_date DESC";
 
 $result_orders = $conn->query($query_orders);
@@ -125,8 +81,6 @@ function get_status_badge($status) {
     <link href="../../css/sb-admin-2.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../../css/custom_admin.css"> 
     <link rel="stylesheet" href="../../css/orders/admin_orders.css">
-    
-    
 </head>
 
 <body id="page-top">
@@ -136,9 +90,9 @@ function get_status_badge($status) {
         <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
 
             <a class="sidebar-brand d-flex align-items-center justify-content-center" href="../index.php"> <div class="sidebar-brand-icon rotate-n-15">
-                    <i class="fas fa-cubes"></i>
-                </div>
-                <div class="sidebar-brand-text mx-3">SkinGlow! Admin</div>
+                        <i class="fas fa-cubes"></i>
+                    </div>
+                    <div class="sidebar-brand-text mx-3">SkinGlow! Admin</div>
             </a>
 
             <hr class="sidebar-divider my-0">
@@ -167,11 +121,6 @@ function get_status_badge($status) {
             <li class="nav-item active"> <a class="nav-link" href="manage_orders.php"> <i class="fas fa-fw fa-shopping-cart"></i>
                         <span>Pesanan</span></a>
             </li>
-
-            <li class="nav-item">
-                <a class="nav-link" href="../users/manage_users.php"> <i class="fas fa-fw fa-users"></i>
-                        <span>Pelanggan</span></a>
-            </li>
             
             <hr class="sidebar-divider">
             <div class="sidebar-heading">
@@ -179,7 +128,7 @@ function get_status_badge($status) {
             </div>
 
             <li class="nav-item">
-                <a class="nav-link" href="../transactions/manage_transactions.php"> <i class="fas fa-fw fa-money-bill-alt"></i>
+                <a class="nav-link" href="../transactions/manage_transactions.php"> <i class="fas fa-fw fa-cash-register"></i>
                         <span>Transaksi</span></a>
             </li>
             <hr class="sidebar-divider">
@@ -216,9 +165,9 @@ function get_status_badge($status) {
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
                                 data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                 <span class="mr-2 d-none d-lg-inline text-gray-600 small">
-                                    <?php 
-                                        echo htmlspecialchars($_SESSION['user_name'] ?? 'Admin Default'); 
-                                    ?>
+                                        <?php 
+                                            echo htmlspecialchars($_SESSION['user_name'] ?? 'Admin '); 
+                                        ?>
                                 </span>
                                 <img class="img-profile rounded-circle"
                                     src="../../img/undraw_profile.svg">
@@ -275,7 +224,7 @@ function get_status_badge($status) {
                                             <div class="row no-gutters align-items-center">
                                                 <div class="col mr-2">
                                                     <div class="text-xs font-weight-bold text-uppercase mb-1">
-                                                        Pelanggan: <?php echo htmlspecialchars($order['customer_name']); ?></div>
+                                                        Pelanggan: <?php echo htmlspecialchars($order['customer_name'] ?? 'Pelanggan Umum'); ?></div>
                                                     <div class="h5 mb-0 font-weight-bold text-gray-800">Total: Rp <?php echo number_format($order['total_amount'], 0, ',', '.'); ?></div>
                                                     <div class="text-xs text-muted mt-2">
                                                         Tanggal Pesanan: <?php echo date('d M Y H:i', strtotime($order['order_date'])); ?><br>
@@ -286,7 +235,7 @@ function get_status_badge($status) {
                                                     <a href="view_order_detail.php?id=<?php echo $order['order_id']; ?>" class="btn btn-sm btn-detail">
                                                         <i class="fas fa-info-circle mr-1"></i> Detail
                                                     </a>
-                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -296,7 +245,7 @@ function get_status_badge($status) {
                     <?php endif; ?>
 
                 </div>
-                </div>
+            </div>
             <footer class="sticky-footer bg-white">
                 <div class="container my-auto">
                     <div class="copyright text-center my-auto">
@@ -340,15 +289,6 @@ function get_status_badge($status) {
             <?php if (isset($_SESSION['user_name'])): ?>
                 $('.navbar-nav .text-gray-600.small').text('<?php echo htmlspecialchars($_SESSION['user_name']); ?>');
             <?php endif; ?>
-
-            // Logika untuk mengisi link hapus di modal konfirmasi (dihapus karena tombol hapus tidak ada)
-            // $('#deleteOrderModal').on('show.bs.modal', function (event) {
-            //     var button = $(event.relatedTarget); // Tombol yang memicu modal
-            //     var orderId = button.data('order-id'); // Ambil nilai dari data-order-id
-            //     var modal = $(this);
-            //     // Atur action form atau link hapus di modal
-            //     modal.find('#confirmDeleteOrderBtn').attr('href', 'manage_orders.php?action=delete&id=' + orderId);
-            // });
         });
     </script>
 

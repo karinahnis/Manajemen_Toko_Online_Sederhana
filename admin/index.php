@@ -1,44 +1,58 @@
 <?php
 
 session_start();
+require_once '../config/database.php';
 
-// Cek apakah user sudah login DAN role-nya adalah 'admin'
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
-    header("Location: ../login.html?error=Akses tidak diizinkan untuk role ini.");
+// Cek apakah pengguna sudah login. Jika belum, arahkan ke halaman login.
+// Ini adalah implementasi keamanan dasar. Anda mungkin perlu logika otorisasi yang lebih kompleks
+// untuk memastikan hanya admin yang bisa mengakses halaman ini.
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../auth/login.php'); // Sesuaikan dengan path halaman login Anda
     exit();
 }
 
-require_once '../config/database.php';
-
 // Inisialisasi koneksi database
-$conn = get_db_connection(); // Fungsi ini harus ada di database.php
+$conn = get_db_connection();
+
+// Set error reporting untuk pengembangan
+// Hapus baris ini di lingkungan produksi
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 // --- Ambil data untuk Dashboard Cards ---
+
+// 1. Total Produk Aktif (stok > 0)
 $total_active_products = 0;
-$query_products = "SELECT COUNT(id) AS total FROM products WHERE is_active = 1"; // Asumsi ada kolom is_active
+$query_products = "SELECT COUNT(id) AS total FROM products WHERE stock > 0";
 $result_products = $conn->query($query_products);
-if ($result_products && $result_products->num_rows > 0) {
+if ($result_products) {
     $row_products = $result_products->fetch_assoc();
     $total_active_products = $row_products['total'];
+} else {
+    // Log error daripada menampilkannya langsung di produksi
+    error_log("Error fetching total active products: " . $conn->error);
 }
 
+// 2. Pendapatan Bulanan (bulan dan tahun saat ini, status 'completed')
 $monthly_revenue = 0;
-// Menggunakan MONTH(CURRENT_DATE()) dan YEAR(CURRENT_DATE()) untuk bulan dan tahun saat ini
-$query_monthly_revenue = "SELECT COALESCE(SUM(total_amount), 0) AS total FROM orders WHERE MONTH(order_date) = MONTH(CURRENT_DATE()) AND YEAR(order_date) = YEAR(CURRENT_DATE()) AND status = 'completed'"; // Asumsi status 'Selesai' berarti pendapatan
+$query_monthly_revenue = "SELECT COALESCE(SUM(total_amount), 0) AS total FROM orders WHERE MONTH(order_date) = MONTH(CURRENT_DATE()) AND YEAR(order_date) = YEAR(CURRENT_DATE()) AND status = 'completed'";
 $result_monthly_revenue = $conn->query($query_monthly_revenue);
-if ($result_monthly_revenue && $result_monthly_revenue->num_rows > 0) {
+if ($result_monthly_revenue) {
     $row_monthly_revenue = $result_monthly_revenue->fetch_assoc();
-    $monthly_revenue = $row_monthly_revenue['total'] ? $row_monthly_revenue['total'] : 0;
+    $monthly_revenue = (float)($row_monthly_revenue['total'] ?? 0); // Menggunakan null coalescing operator untuk PHP 7+
+} else {
+    error_log("Error fetching monthly revenue: " . $conn->error);
 }
 
-$total_new_customers = 0;
-$query_new_customers = "SELECT COUNT(id) AS total FROM users WHERE role = 'user'"; // Asumsi ada kolom role 'customer'
-$result_new_customers = $conn->query($query_new_customers);
-if ($result_new_customers && $result_new_customers->num_rows > 0) {
-    $row_new_customers = $result_new_customers->fetch_assoc();
-    $total_new_customers = $row_new_customers['total'];
+// 3. Produk Stok Habis (stok = 0)
+$total_out_of_stock_products = 0;
+$query_out_of_stock = "SELECT COUNT(id) AS total FROM products WHERE stock = 0";
+$result_out_of_stock = $conn->query($query_out_of_stock);
+if ($result_out_of_stock) {
+    $row_out_of_stock = $result_out_of_stock->fetch_assoc();
+    $total_out_of_stock_products = $row_out_of_stock['total'];
+} else {
+    error_log("Error fetching out of stock products: " . $conn->error);
 }
-
 
 // --- Ambil data untuk Grafik Penjualan Bulanan (Area Chart) ---
 $sales_data_labels = [];
@@ -52,22 +66,28 @@ for ($i = 0; $i < 12; $i++) {
 $months = array_reverse($months); // Urutkan dari bulan terlama ke terbaru
 
 foreach ($months as $month_year) {
-    $month_label = date('M Y', strtotime($month_year)); // Contoh: "Jan 2023"
+    $month_label = date('M Y', strtotime($month_year));
     $query_sales_per_month = "SELECT COALESCE(SUM(total_amount), 0) AS total_revenue
                               FROM orders
                               WHERE DATE_FORMAT(order_date, '%Y-%m') = ?
-                              AND status = 'completed'"; // Hanya pesanan selesai
+                              AND status = 'completed'";
     $stmt_sales = $conn->prepare($query_sales_per_month);
-    $stmt_sales->bind_param("s", $month_year);
-    $stmt_sales->execute();
-    $result_sales = $stmt_sales->get_result();
-    $row_sales = $result_sales->fetch_assoc();
 
-    $sales_data_labels[] = $month_label;
-    $sales_data_values[] = (float)$row_sales['total_revenue'];
-    $stmt_sales->close();
+    if ($stmt_sales) {
+        $stmt_sales->bind_param("s", $month_year);
+        $stmt_sales->execute();
+        $result_sales = $stmt_sales->get_result();
+        $row_sales = $result_sales->fetch_assoc();
+
+        $sales_data_labels[] = $month_label;
+        $sales_data_values[] = (float)$row_sales['total_revenue'];
+        $stmt_sales->close();
+    } else {
+        error_log("Error preparing sales per month query: " . $conn->error);
+        $sales_data_labels[] = $month_label;
+        $sales_data_values[] = 0;
+    }
 }
-
 
 // --- Ambil data untuk Produk Terlaris (Pie Chart) ---
 $top_products_labels = [];
@@ -78,55 +98,50 @@ $query_top_products = "SELECT
                             SUM(oi.quantity) AS total_sold
                         FROM order_items oi
                         JOIN products p ON oi.product_id = p.id
+                        JOIN orders o ON oi.order_id = o.id
+                        WHERE o.status = 'completed' -- Hanya produk dari pesanan yang selesai
                         GROUP BY p.name
                         ORDER BY total_sold DESC
-                        LIMIT 5"; // Ambil 5 produk terlaris
+                        LIMIT 5";
 
 $result_top_products = $conn->query($query_top_products);
 
-if ($result_top_products && $result_top_products->num_rows > 0) {
-    while ($row = $result_top_products->fetch_assoc()) {
-        $top_products_labels[] = $row['product_name'];
-        $top_products_values[] = (int)$row['total_sold'];
+if ($result_top_products) {
+    if ($result_top_products->num_rows > 0) {
+        while ($row = $result_top_products->fetch_assoc()) {
+            $top_products_labels[] = $row['product_name'];
+            $top_products_values[] = (int)$row['total_sold'];
+        }
+    } else {
+        $top_products_labels = ["Tidak Ada Data"];
+        $top_products_values = [1];
     }
 } else {
-    // Data dummy jika tidak ada produk terjual, agar chart tidak error
-    $top_products_labels = ["Tidak Ada Data"];
-    $top_products_values = [1]; // Beri nilai minimal agar pie chart bisa dirender
+    error_log("Error fetching top products: " . $conn->error);
+    $top_products_labels = ["Error Data"];
+    $top_products_values = [1];
 }
 
-
-// --- Ambil data untuk Pesanan Terbaru (Table) ---
-$latest_orders = [];
-// Perbaikan di sini: Mengganti u.username dengan u.name jika kolom di tabel users adalah 'name'
-$query_latest_orders = "SELECT
-                            o.id AS order_id,
-                            u.name AS customer_name,
-                            o.total_amount,
-                            o.status,
-                            o.order_date
-                        FROM orders o
-                        JOIN users u ON o.user_id = u.id
-                        ORDER BY o.order_date DESC
-                        LIMIT 5"; // Ambil 5 pesanan terbaru
-
-$result_latest_orders = $conn->query($query_latest_orders);
-if ($result_latest_orders && $result_latest_orders->num_rows > 0) {
-    while ($row = $result_latest_orders->fetch_assoc()) {
-        $latest_orders[] = $row;
-    }
-}
-
-
-// --- Ambil data untuk Produk Stok Rendah (Table) ---
+// --- Ambil data untuk Produk Stok Rendah (Table dan Peringatan) ---
 $low_stock_products = [];
-// Asumsi Anda memiliki kolom 'stock' dan 'min_stock_threshold' di tabel products
-$query_low_stock = "SELECT id, name, stock FROM products WHERE stock <= 10 ORDER BY stock ASC LIMIT 5"; // Produk dengan stok <= 10
-$result_low_stock = $conn->query($query_low_stock);
-if ($result_low_stock && $result_low_stock->num_rows > 0) {
-    while ($row = $result_low_stock->fetch_assoc()) {
-        $low_stock_products[] = $row;
+$stock_threshold = 10; // Anda bisa mengatur ambang batas stok rendah di sini
+// Hanya produk dengan stok > 0 tapi <= ambang batas
+$query_low_stock = "SELECT id, name, stock FROM products WHERE stock > 0 AND stock <= ? ORDER BY stock ASC";
+$stmt_low_stock = $conn->prepare($query_low_stock);
+
+if ($stmt_low_stock) {
+    $stmt_low_stock->bind_param("i", $stock_threshold);
+    $stmt_low_stock->execute();
+    $result_low_stock = $stmt_low_stock->get_result();
+
+    if ($result_low_stock->num_rows > 0) {
+        while ($row = $result_low_stock->fetch_assoc()) {
+            $low_stock_products[] = $row;
+        }
     }
+    $stmt_low_stock->close();
+} else {
+    error_log("Error preparing low stock query: " . $conn->error);
 }
 
 // Tutup koneksi database
@@ -159,7 +174,7 @@ $conn->close();
 
     <div id="wrapper">
 
-        <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar" >
+        <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
 
             <a class="sidebar-brand d-flex align-items-center justify-content-center" href="index.php">
                 <div class="sidebar-brand-icon rotate-n-15">
@@ -197,11 +212,6 @@ $conn->close();
                     <span>Pesanan</span></a>
             </li>
 
-            <li class="nav-item">
-                <a class="nav-link" href="users/manage_users.php"> <i class="fas fa-fw fa-users"></i>
-                    <span>Pengguna</span></a>
-            </li>
-            
             <hr class="sidebar-divider">
             <div class="sidebar-heading">
                 Manajemen Keuangan
@@ -244,8 +254,9 @@ $conn->close();
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
                                 data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                                 <span class="mr-2 d-none d-lg-inline text-gray-600 small">
-                                    <?php 
-                                        echo htmlspecialchars($_SESSION['user_name'] ?? 'Admin Default'); 
+                                    <?php
+                                        // Pastikan session user_name di-set sebelum mencoba mengaksesnya
+                                        echo htmlspecialchars($_SESSION['user_name'] ?? 'Admin Default');
                                     ?>
                                 </span>
                                 <img class="img-profile rounded-circle"
@@ -307,22 +318,21 @@ $conn->close();
                         </div>
 
                         <div class="col-xl-3 col-md-6 mb-4">
-                            <div class="card border-left-warning shadow h-100 py-2">
+                            <div class="card border-left-danger shadow h-100 py-2">
                                 <div class="card-body">
                                     <div class="row no-gutters align-items-center">
                                         <div class="col mr-2">
-                                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                                Total Pengguna Terdaftar</div>
-                                            <div class="h5 mb-0 font-weight-bold text-gray-800"><?php echo $total_new_customers; ?></div>
+                                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                                Produk Stok Habis</div>
+                                            <div class="h5 mb-0 font-weight-bold text-gray-800"><?php echo $total_out_of_stock_products; ?></div>
                                         </div>
                                         <div class="col-auto">
-                                            <i class="fas fa-user-plus fa-2x text-gray-300"></i>
+                                            <i class="fas fa-exclamation-circle fa-2x text-gray-300"></i>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-
                     </div>
 
                     <div class="row">
@@ -352,9 +362,8 @@ $conn->close();
                                         <canvas id="myPieChart"></canvas>
                                     </div>
                                     <div class="mt-4 text-center small">
-                                        <?php if (!empty($top_products_labels)): ?>
+                                        <?php if (!empty($top_products_labels) && $top_products_labels[0] !== "Tidak Ada Data" && $top_products_labels[0] !== "Error Data"): ?>
                                             <?php
-                                                // Warna default SB Admin 2 untuk pie chart
                                                 $default_colors = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'];
                                             ?>
                                             <?php foreach ($top_products_labels as $index => $label): ?>
@@ -363,7 +372,7 @@ $conn->close();
                                                 </span>
                                             <?php endforeach; ?>
                                         <?php else: ?>
-                                            <span>Tidak ada data produk terlaris.</span>
+                                            <span><?php echo htmlspecialchars($top_products_labels[0] ?? 'Tidak Ada Data Penjualan'); ?></span>
                                         <?php endif; ?>
                                     </div>
                                 </div>
@@ -372,64 +381,7 @@ $conn->close();
                     </div>
 
                     <div class="row">
-
-                        <div class="col-lg-7 mb-4">
-                            <div class="card shadow mb-4">
-                                <div class="card-header py-3">
-                                    <h6 class="m-0 font-weight-bold text-primary">Pesanan Terbaru</h6>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered" id="latestOrdersTable" width="100%" cellspacing="0">
-                                            <thead>
-                                                <tr>
-                                                    <th>ID Pesanan</th>
-                                                    <th>Pelanggan</th>
-                                                    <th>Total</th>
-                                                    <th>Status</th>
-                                                    <th>Tanggal</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php if (!empty($latest_orders)): ?>
-                                                    <?php foreach ($latest_orders as $order): ?>
-                                                        <tr>
-                                                            <td>#<?php echo htmlspecialchars($order['order_id']); ?></td>
-                                                            <td><?php echo htmlspecialchars($order['customer_name']); ?></td>
-                                                            <td>Rp <?php echo number_format($order['total_amount'], 0, ',', '.'); ?></td>
-                                                            <td>
-                                                                <?php
-                                                                    $status_badge = '';
-                                                                    switch ($order['status']) {
-                                                                        case 'Pending': $status_badge = 'badge-warning'; break;
-                                                                        case 'completed': $status_badge = 'badge-success'; break; // Changed from 'Selesai' to 'completed' as per query
-                                                                        case 'Shipped': $status_badge = 'badge-info'; break; // Assuming 'Dikirim' means 'Shipped'
-                                                                        case 'Cancelled': $status_badge = 'badge-danger'; break; // Assuming 'Dibatalkan' means 'Cancelled'
-                                                                        default: $status_badge = 'badge-secondary'; break;
-                                                                    }
-                                                                ?>
-                                                                <span class="badge <?php echo $status_badge; ?>"><?php echo htmlspecialchars($order['status']); ?></span>
-                                                            </td>
-                                                            <td><?php echo date('Y-m-d', strtotime($order['order_date'])); ?></td>
-                                                        </tr>
-                                                    <?php endforeach; ?>
-                                                <?php else: ?>
-                                                    <tr>
-                                                        <td colspan="5" class="text-center">Tidak ada pesanan terbaru.</td>
-                                                    </tr>
-                                                <?php endif; ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div class="text-center mt-3">
-                                        <a href="orders/manage_orders.php" class="btn btn-sm btn-outline-primary">Lihat Semua Pesanan &rarr;</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="col-lg-5 mb-4">
-                            <div class="card shadow mb-4">
+                        <div class="col-lg-12 mb-4"> <div class="card shadow mb-4">
                                 <div class="card-header py-3">
                                     <h6 class="m-0 font-weight-bold text-primary">Produk Stok Rendah</h6>
                                 </div>
@@ -466,10 +418,10 @@ $conn->close();
                                 </div>
                             </div>
                         </div>
-                    </div>
+                        </div>
 
                 </div>
-                </div>
+            </div>
             <footer class="sticky-footer bg-white">
                 <div class="container my-auto">
                     <div class="copyright text-center my-auto">
@@ -477,8 +429,8 @@ $conn->close();
                     </div>
                 </div>
             </footer>
-            </div>
         </div>
+    </div>
     <a class="scroll-to-top rounded" href="#page-top">
         <i class="fas fa-angle-up"></i>
     </a>
@@ -513,6 +465,31 @@ $conn->close();
     <script src="../vendor/datatables/dataTables.bootstrap4.min.js"></script>
 
     <script>
+        // Fungsi number_format untuk Chart.js tooltips
+        function number_format(number, decimals, dec_point, thousands_sep) {
+            // * example: number_format(1234.56, 2, ',', ' ');
+            // * returns: '1 234,56'
+            number = (number + '').replace(',', '').replace(' ', '');
+            var n = !isFinite(+number) ? 0 : +number,
+                prec = !isFinite(+decimals) ? 0 : Math.abs(decimals),
+                sep = (typeof thousands_sep === 'undefined') ? '.' : thousands_sep,
+                dec = (typeof dec_point === 'undefined') ? ',' : dec_point,
+                s = '',
+                toFixedFix = function(n, prec) {
+                    var k = Math.pow(10, prec);
+                    return '' + Math.round(n * k) / k;
+                };
+            s = (prec ? toFixedFix(n, prec) : '' + Math.round(n)).split('.');
+            if (s[0].length > 3) {
+                s[0] = s[0].replace(/\B(?=(?:\d{3})+(?!\d))/g, sep);
+            }
+            if ((s[1] || '').length < prec) {
+                s[1] = s[1] || '';
+                s[1] += new Array(prec - s[1].length + 1).join('0');
+            }
+            return s.join(dec);
+        }
+
         $(document).ready(function() {
             // Area Chart - Monthly Sales
             var ctxArea = document.getElementById("myAreaChart");
@@ -563,7 +540,6 @@ $conn->close();
                             ticks: {
                                 maxTicksLimit: 5,
                                 padding: 10,
-                                // Include a dollar sign in the ticks
                                 callback: function(value, index, values) {
                                     return 'Rp ' + number_format(value);
                                 }
@@ -604,7 +580,7 @@ $conn->close();
                 }
             });
 
-            // Pie Chart - Top Products
+            // Pie Chart - Top Selling Products
             var ctxPie = document.getElementById("myPieChart");
             var myPieChart = new Chart(ctxPie, {
                 type: 'doughnut',
@@ -613,7 +589,7 @@ $conn->close();
                     datasets: [{
                         data: <?php echo json_encode($top_products_values); ?>,
                         backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'],
-                        hoverBackgroundColor: ['#2e59d9', '#17a673', '#2c9faf', '#f4b619', '#d43f30'],
+                        hoverBackgroundColor: ['#2e59d9', '#17a673', '#2c9faf', '#d4a52d', '#c23c31'],
                         hoverBorderColor: "rgba(234, 236, 244, 1)",
                     }],
                 },
@@ -629,14 +605,11 @@ $conn->close();
                         displayColors: false,
                         caretPadding: 10,
                         callbacks: {
-                            label: function(tooltipItem, data) {
-                                var dataset = data.datasets[tooltipItem.datasetIndex];
-                                var total = dataset.data.reduce(function(previousValue, currentValue, currentIndex, array) {
-                                    return previousValue + currentValue;
-                                });
-                                var currentValue = dataset.data[tooltipItem.index];
-                                var percentage = Math.floor(((currentValue/total)*100)+0.5);
-                                return data.labels[tooltipItem.index] + ': ' + currentValue + ' (' + percentage + '%)';
+                            label: function(tooltipItem, chart) {
+                                var dataLabel = chart.labels[tooltipItem.index];
+                                var value = chart.datasets[0].data[tooltipItem.index];
+                                // Menampilkan nilai sebagai integer (kuantitas)
+                                return dataLabel + ': ' + number_format(value, 0) + ' unit';
                             }
                         }
                     },
@@ -647,54 +620,19 @@ $conn->close();
                 },
             });
 
-            // Function to format numbers for tooltips and y-axis labels
-            function number_format(number, decimals, dec_point, thousands_sep) {
-                // * example: number_format(1234.56, 2, ',', ' ');
-                // * return: '1 234,56'
-                number = (number + '').replace(',', '').replace(' ', '');
-                var n = !isFinite(+number) ? 0 : +number,
-                    prec = !isFinite(+decimals) ? 0 : Math.abs(decimals),
-                    sep = (typeof thousands_sep === 'undefined') ? '.' : thousands_sep,
-                    dec = (typeof dec_point === 'undefined') ? ',' : dec_point,
-                    s = '',
-                    toFixedFix = function(n, prec) {
-                        var k = Math.pow(10, prec);
-                        return '' + Math.round(n * k) / k;
-                    };
-                s = (prec ? toFixedFix(n, prec) : '' + Math.round(n)).split('.');
-                if (s[0].length > 3) {
-                    s[0] = s[0].replace(/\B(?=(?:\d{3})+(?!\d))/g, sep);
-                }
-                if ((s[1] || '').length < prec) {
-                    s[1] = s[1] || '';
-                    s[1] += new Array(prec - s[1].length + 1).join('0');
-                }
-                return s.join(dec);
-            }
-
-            // Inisialisasi DataTables untuk tabel pesanan terbaru
-            $('#latestOrdersTable').DataTable({
-                "paging": false, 
-                "searching": false, 
-                "info": false, 
-                "order": [[4, "desc"]] // Mengurutkan berdasarkan kolom Tanggal (indeks 4) secara descending
-            });
-
-            // Inisialisasi DataTables untuk tabel produk stok rendah
+            // DataTables Initialization (for Low Stock Products)
             $('#lowStockProductsTable').DataTable({
-                "paging": false, 
-                "searching": false, 
-                "info": false, 
-                "order": [[1, "asc"]] // Mengurutkan berdasarkan kolom Stok (indeks 1) secara ascending
+                "paging": true,
+                "lengthChange": false,
+                "searching": false,
+                "ordering": true,
+                "info": false,
+                "autoWidth": false,
+                "responsive": true,
+                "pageLength": 5 // Menampilkan hanya 5 baris
             });
-
-            // Update admin name in topbar (jika user_name ada di session)
-            <?php if (isset($_SESSION['user_name'])): ?>
-                $('.navbar-nav .text-gray-600.small').text('<?php echo htmlspecialchars($_SESSION['user_name']); ?>');
-            <?php endif; ?>
         });
     </script>
-
 </body>
 
 </html>

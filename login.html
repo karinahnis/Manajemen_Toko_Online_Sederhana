@@ -1,114 +1,112 @@
-    <!DOCTYPE html>
-    <html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 
-    <head>
-        <meta charset="utf-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-        <meta name="description" content="Login ke akun AuraSkin Anda untuk melanjutkan pengalaman belanja skincare terbaik.">
-        <meta name="author" content="Tim AuraSkin">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Login ke akun AuraSkin Anda untuk melanjutkan pengalaman belanja skincare terbaik.">
+    <meta name="author" content="Tim AuraSkin">
 
-        <title>SkinGlow: Login Akun</title>
+    <title>SkinGlow: Login Akun</title>
 
-        <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
-        <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
-        <link href="css/sb-admin-2.min.css" rel="stylesheet">
+    <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
+    <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
+    <link href="css/sb-admin-2.min.css" rel="stylesheet">
 
-        <link href="css/login_style.css" rel="stylesheet">
+    <link href="css/login_style.css" rel="stylesheet">
 
-    </head>
+</head>
 
-    <body class="bg-gradient-primary">
+<body class="bg-gradient-primary">
 
-        <div class="container">
-            <div class="card o-hidden border-0 shadow-lg my-5">
-                <div class="card-body p-0">
-                    <div class="row no-gutters">
-                        <div class="col-lg-6 d-none d-lg-flex image-side">
-                            <img src="img/for_login.png" alt="Ilustrasi Kecantikan & Gaya Hidup Sehat" class="img-fluid">
-                        </div>
-                        <div class="col-lg-6 form-side">
-                            <div class="p-5">
-                                <div class="text-center">
-                                    <h1 class="h4 text-gray-900 mb-2">Login ke SkinGlow!</h1>
-                                    <p class="text-muted mb-4">Masuk untuk melanjutkan belanja skincare Anda!</p>
-                                    <div id="messageContainer" class="mb-3"></div>
-                                </div>
-                                <form class="user" id="loginForm" method="POST" action="api/login.php">
-                                    <div class="form-group">
-                                        <input type="email" class="form-control form-control-user"
-                                            id="inputEmail" aria-describedby="emailHelp"
-                                            placeholder="Email" autocomplete="off" name="email" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <input type="password" class="form-control form-control-user"
-                                            id="inputPassword" placeholder="Password" name="password" required >
-                                    </div>
-                                    <div class="form-group">
-                                        <div class="custom-control custom-checkbox small">
-                                            <input type="checkbox" class="custom-control-input" id="customCheck">
-                                            <label class="custom-control-label" for="customCheck">Ingat Saya</label>
-                                        </div>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary btn-user btn-block">
-                                        Masuk ke Akun
-                                    </button>
-                                    <hr>
-                                </form>
-                                <hr>
-                                <div class="text-center">
-                                    <a class="small" href="forgot-password.html">Lupa Password?</a>
-                                </div>
-                                <div class="text-center">
-                                    <a class="small" href="register.html">Belum punya akun? Daftar sekarang!</a>
-                                </div>
+    <div class="container">
+        <div class="card o-hidden border-0 shadow-lg my-5">
+            <div class="card-body p-0">
+                <div class="row no-gutters">
+                    <div class="col-lg-6 d-none d-lg-flex image-side">
+                        <img src="img/for_login.png" alt="Ilustrasi Kecantikan & Gaya Hidup Sehat" class="img-fluid">
+                    </div>
+                    <div class="col-lg-6 form-side">
+                        <div class="p-5">
+                            <div class="text-center">
+                                <h1 class="h4 text-gray-900 mb-2">Login ke SkinGlow!</h1>
+                                <p class="text-muted mb-4">Masuk untuk mengelola toko Anda!</p>
+                                <div id="messageContainer" class="mb-3"></div>
                             </div>
+                            <form class="user" id="loginForm" method="POST" action="api/login.php">
+                                <div class="form-group">
+                                    <input type="email" class="form-control form-control-user"
+                                        id="inputEmail" aria-describedby="emailHelp"
+                                        placeholder="Email" autocomplete="off" name="email" required>
+                                </div>
+                                <div class="form-group">
+                                    <input type="password" class="form-control form-control-user"
+                                        id="inputPassword" placeholder="Password" name="password" required >
+                                </div>
+                                <div class="form-group">
+                                    <div class="custom-control custom-checkbox small">
+                                        <input type="checkbox" class="custom-control-input" id="customCheck">
+                                        <label class="custom-control-label" for="customCheck">Ingat Saya</label>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-user btn-block">
+                                    Masuk ke Akun
+                                </button>
+                                <hr>
+                            </form>
+                            <hr>
+                            <div class="text-center">
+                                </div>
+                            <div class="text-center">
+                                </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <script src="vendor/jquery/jquery.min.js"></script>
-        <script src="vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-        <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
-        <script src="js/sb-admin-2.min.js"></script>
+    <script src="vendor/jquery/jquery.min.js"></script>
+    <script src="vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
+    <script src="js/sb-admin-2.min.js"></script>
 
-        <script>
-            $(document).ready(function() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const error = urlParams.get('error');
-                const success = urlParams.get('success');
+    <script>
+        $(document).ready(function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const error = urlParams.get('error');
+            const success = urlParams.get('success');
 
-                const messageContainer = $('#messageContainer');
+            const messageContainer = $('#messageContainer');
 
-                // Hapus parameter dari URL setelah dibaca untuk tampilan lebih bersih
-                if (history.replaceState) {
-                    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                    window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+            // Hapus parameter dari URL setelah dibaca untuk tampilan lebih bersih
+            if (history.replaceState) {
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+            }
+
+            if (error) {
+                messageContainer.html('<div class="alert alert-danger alert-dismissible fade show" role="alert">' + error + '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+            } else if (success) {
+                messageContainer.html('<div class="alert alert-success alert-dismissible fade show" role="alert">' + success + '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+            }
+
+            // Validasi frontend untuk form login
+            $('#loginForm').on('submit', function(e) {
+                messageContainer.empty(); // Sembunyikan pesan sebelumnya
+
+                const email = $('#inputEmail').val();
+                const password = $('#inputPassword').val();
+
+                if (!email || !password) {
+                    messageContainer.html('<div class="alert alert-danger alert-dismissible fade show" role="alert">Email dan password harus diisi. <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
+                    e.preventDefault(); // Mencegah form disubmit jika validasi gagal
                 }
-
-                if (error) {
-                    messageContainer.html('<div class="alert alert-danger alert-dismissible fade show" role="alert">' + error + '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
-                } else if (success) {
-                    messageContainer.html('<div class="alert alert-success alert-dismissible fade show" role="alert">' + success + '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
-                }
-
-                // Validasi frontend untuk form login
-                $('#loginForm').on('submit', function(e) {
-                    messageContainer.empty(); // Sembunyikan pesan sebelumnya
-
-                    const email = $('#inputEmail').val();
-                    const password = $('#inputPassword').val();
-
-                    if (!email || !password) {
-                        messageContainer.html('<div class="alert alert-danger alert-dismissible fade show" role="alert">Email dan password harus diisi. <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>');
-                        e.preventDefault(); // Mencegah form disubmit jika validasi gagal
-                    }
-                });
             });
-        </script>
+        });
+    </script>
 
-    </body>
+</body>
 
-    </html>
+</html>
